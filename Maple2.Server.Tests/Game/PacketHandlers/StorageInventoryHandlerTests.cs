@@ -472,4 +472,110 @@ public class StorageInventoryHandlerTests {
         Mesos(session, deposit: true, 0);
         Assert.That(test.TakeSent().Select(Convert.ToHexString), Has.None.EqualTo(Hex(StorageInventoryPacket.UpdateMesos(0))));
     }
+
+    private int InBag(GameSession session) => session.Item.Inventory.Find(20000001).Sum(item => item.Amount);
+    private static int InStorage(GameSession session) => Stored(session).Where(item => item.Id == 20000001).Sum(item => item.Amount);
+
+    // Item rows of the stack's id, as stored: (owner, amount).
+    private List<(long Owner, int Amount)> Rows() {
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        return Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.AsNoTracking(context.Item).Where(row => row.ItemId == 20000001).AsEnumerable()
+            .Select(row => (row.OwnerId, row.Amount)).ToList();
+    }
+
+    // A deposit and a withdrawal each sent twice: the item is moved once, the second finds nothing to move (refused
+    // as an invalid count), and the five are in one place.
+    [Test]
+    public void DepositAndWithdraw_Twice_MoveOnce() {
+        GameSession session = Open();
+        Item(session, 0, stack.Uid, 5);
+        test.TakeSent();
+        Item(session, 0, stack.Uid, 5);
+        string invalid = Hex(StorageInventoryPacket.Error(Maple2.Model.Error.StorageInventoryError.s_item_err_invalid_count));
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { invalid }));
+        Assert.That((InBag(session), InStorage(session)), Is.EqualTo((0, 5)));
+
+        Item(session, 1, stack.Uid, 5);
+        test.TakeSent();
+        Item(session, 1, stack.Uid, 5);
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { invalid }));
+        Assert.That((InBag(session), InStorage(session)), Is.EqualTo((5, 0)));
+    }
+
+    // The rest of a stack deposited onto its part already stored: the bag's stack is used up in the storage's, and its
+    // row goes to owner 0 with the stack's new amount at once. Before, the row stayed the character's, so the next
+    // login loaded the two into the bag again while the storage held all five.
+    [Test]
+    public void Deposit_UsedUpInAStoredStack_LeavesNoRowWithTheCharacter() {
+        GameSession session = Open();
+        Item(session, 0, stack.Uid, 3);
+        Item(session, 0, stack.Uid, 2);
+        Assert.That((InBag(session), InStorage(session)), Is.EqualTo((0, 5)));
+
+        Assert.Multiple(() => {
+            Assert.That(Rows().Where(row => row.Owner == test.CharacterId), Is.Empty, "nothing is left with the character");
+            Assert.That(Rows().Where(row => row.Owner == test.AccountId).Sum(row => row.Amount), Is.EqualTo(5));
+            Assert.That(test.Errors, Is.Empty);
+        });
+
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(15)));
+        Assert.That(Rows().Where(row => row.Owner != 0).Sum(row => row.Amount), Is.EqualTo(5));
+    }
+
+    // The same deposit when the save fails: the storage's stack is put back and the two return to the bag.
+    [Test]
+    public void Deposit_UsedUpNotStored_ReturnsToTheBag() {
+        GameSession session = Open();
+        Item(session, 0, stack.Uid, 3);
+        test.FailSave = context => context.ChangeTracker.Entries().Any(entry => entry.Entity is Maple2.Database.Model.Item item && item.OwnerId == 0);
+
+        Item(session, 0, stack.Uid, 2);
+        test.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That((InBag(session), InStorage(session)), Is.EqualTo((2, 3)));
+            Assert.That(test.TakeSent().Select(Convert.ToHexString),
+                Does.Contain(Hex(StorageInventoryPacket.Error(Maple2.Model.Error.StorageInventoryError.s_store_err_code))));
+        });
+    }
+
+    // A withdrawal used up in a bag stack: the storage's row is not left with the account.
+    [Test]
+    public void Withdraw_UsedUpInABagStack_LeavesNoRowWithTheAccount() {
+        GameSession session = Open();
+        Item(session, 0, stack.Uid, 3);
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(15)));
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(12);
+            writer.WriteLong(0);
+        }));
+        long stored = Stored(session).Single().Uid;
+
+        Item(session, 1, stored, 3);
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(15)));
+
+        Assert.Multiple(() => {
+            Assert.That(InBag(session), Is.EqualTo(5));
+            Assert.That(Rows().Where(row => row.Owner == test.AccountId), Is.Empty, "nothing is left with the account");
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // Two deposits of mesos that together exceed the wallet, and two withdrawals that together exceed the storage:
+    // the first of each is kept and the second refused; wallet and storage add up to the start.
+    [Test]
+    public void Mesos_Twice_SecondRefused() {
+        GameSession session = Open(meso: 100);
+        Mesos(session, deposit: true, 70);
+        Mesos(session, deposit: true, 70);
+        Assert.That(session.Currency.Meso, Is.EqualTo(30));
+
+        Mesos(session, deposit: false, 50);
+        Mesos(session, deposit: false, 50);
+        Assert.That(session.Currency.Meso, Is.EqualTo(80));
+        test.TakeSent();
+        Mesos(session, deposit: false, 20);
+        Assert.That(session.Currency.Meso, Is.EqualTo(100));
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Does.Contain(Hex(StorageInventoryPacket.UpdateMesos(0))));
+    }
 }

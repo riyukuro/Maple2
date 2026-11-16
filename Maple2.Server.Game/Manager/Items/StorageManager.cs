@@ -118,9 +118,13 @@ public sealed class StorageManager : IDisposable {
                 return;
             }
 
+            ItemBinding? bagBinding = deposit.Binding;
             deposit.Slot = slot;
             deposit.Binding = storedBy;
             IList<(Item, int Added)> result = items.Add(deposit, true);
+            if (deposit.Amount <= 0 && !StoreUsedUp(deposit, bagBinding, result)) {
+                return;
+            }
 
             foreach ((Item item, int _) in result) {
                 session.Send(deposit.Uid == item.Uid
@@ -128,6 +132,32 @@ public sealed class StorageManager : IDisposable {
                     : StorageInventoryPacket.Update(item.Uid, item.Amount));
             }
         }
+    }
+
+    // A deposit used up in stored stacks takes no slot of its own: its row (the character's, when the whole bag stack
+    // went in) is written to owner 0 together with the stacks' new amounts, in one save. Before, the row stayed the
+    // character's and nothing wrote it again (the bag let go of it at the remove), so the next login loaded the
+    // deposited items into the bag while the storage held them too. A save that fails takes the stacks back and
+    // returns the deposit to the bag; false then.
+    private bool StoreUsedUp(Item deposit, ItemBinding? bagBinding, IList<(Item Item, int Added)> stacked) {
+        using (GameStorage.Request db = session.GameStorage.Context()) {
+            if (db.SaveItems(session.AccountId, stacked.Select(result => result.Item).ToArray(), [deposit])) {
+                return true;
+            }
+        }
+
+        foreach ((Item stack, int added) in stacked) {
+            stack.Amount -= added;
+            deposit.Amount += added;
+        }
+        deposit.Slot = -1;
+        deposit.Binding = bagBinding;
+        Log.Error("Storage deposit {Uid} ({ItemId}) of {CharacterId}: the stacks it went into were not written", deposit.Uid, deposit.Id, session.CharacterId);
+        if (!session.Item.AddOrMail(deposit, commit: true)) {
+            Log.Error("Storage deposit {Uid} ({ItemId} x{Amount}) of {CharacterId} not returned", deposit.Uid, deposit.Id, deposit.Amount, session.CharacterId);
+        }
+        session.Send(StorageInventoryPacket.Error(s_store_err_code));
+        return false;
     }
 
     public void Withdraw(long uid, short slot, int amount) {
