@@ -446,7 +446,7 @@ public class NpcTalkHandler : FieldPacketHandler {
         HandleAllianceQuest(session, questId, mode);
     }
 
-    private static void HandleAllianceQuest(GameSession session, int questId, short mode) {
+    internal static void HandleAllianceQuest(GameSession session, int questId, short mode) {
         switch (mode) {
             case 0:
                 if (!session.QuestMetadata.TryGet(questId, out QuestMetadata? metadata) || metadata.Basic.Type != QuestType.AllianceQuest) {
@@ -468,6 +468,17 @@ public class NpcTalkHandler : FieldPacketHandler {
                 return;
             case 2:
                 if (!session.Quest.TryGetQuest(questId, out Quest? quest) || quest.Metadata.Basic.Type != QuestType.AllianceQuest) {
+                    return;
+                }
+                // The window's completion takes the checks of Quest 4 (QuestHandler): a held quest past its end
+                // (182 KR alliance quests reset weekly, 5 have a duration) gets invalid_date and nothing, a dead
+                // player its own text. Before, an expired quest whose conditions were met still paid out.
+                if (session.Quest.IsExpired(quest)) {
+                    session.Send(QuestPacket.Error(QuestError.s_quest_error_invalid_date));
+                    return;
+                }
+                if (session.Player.IsDead) {
+                    session.Send(QuestPacket.Error(QuestError.s_quest_error_fail_complete_by_dead));
                     return;
                 }
                 // Complete answers a full inventory itself.

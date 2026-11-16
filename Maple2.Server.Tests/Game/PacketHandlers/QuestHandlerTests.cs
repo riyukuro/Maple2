@@ -1007,6 +1007,30 @@ public class QuestHandlerTests {
         });
     }
 
+    // The alliance window's completion (NpcTalk 8 mode 2, UIAllianceQuestDialog onAccept) of a held alliance quest
+    // with its conditions met: past its end it gets invalid_date and nothing, as Quest 4 gives it; inside its time it
+    // completes.
+    [TestCase(-10, false)]
+    [TestCase(-40, true)]
+    public void AllianceWindowComplete_OfAQuestPastItsEndGivesInvalidDate(int startedMinutesAgo, bool expired) {
+        GameSession session = Login();
+        Quest quest = test.StartQuest(Data(type: QuestType.AllianceQuest) with { Basic = Data(type: QuestType.AllianceQuest).Basic with { DurationMinutes = 30 } });
+        quest.Conditions[0].Counter = 1;
+        quest.StartTime = DateTimeOffset.UtcNow.AddMinutes(startedMinutesAgo).ToUnixTimeSeconds();
+        long meso = session.Currency.Meso;
+
+        NpcTalkHandler.HandleAllianceQuest(session, QuestId, 2);
+
+        List<byte[]> sent = test.TakeSent();
+        Assert.Multiple(() => {
+            if (expired) {
+                Assert.That(sent.Select(Convert.ToHexString), Is.EqualTo(new[] { Error(QuestError.s_quest_error_invalid_date) }));
+            }
+            Assert.That(quest.State, Is.EqualTo(expired ? QuestState.Started : QuestState.Completed));
+            Assert.That(session.Currency.Meso, Is.EqualTo(expired ? meso : meso + 100));
+        });
+    }
+
     // The term of an eventTag quest is the term tag of that name (the client's GetEndTime, questdata.cpp:274): a
     // running term completes it, a term that is over gives invalid_date. A QuestTag game event is no term.
     [TestCase(true, false)]
