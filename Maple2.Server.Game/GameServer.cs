@@ -397,12 +397,7 @@ public class GameServer : Server<GameSession> {
         debugGraphicsContext.CleanUp();
         eventEdgeTimer?.Dispose();
 
-        lock (mutex) {
-            foreach (GameSession session in connectingSessions) {
-                session.Send(NoticePacket.Disconnect(new InterfaceText("GameServer Maintenance")));
-                session.Dispose();
-            }
-        }
+        CloseConnecting();
         foreach (GameSession session in sessions.Values) {
             session.Send(NoticePacket.Disconnect(new InterfaceText("GameServer Maintenance")));
             session.Dispose();
@@ -410,6 +405,20 @@ public class GameServer : Server<GameSession> {
         fieldFactory.Dispose();
 
         return base.StopAsync(cancellationToken);
+    }
+
+    // The sessions not yet loading a character are closed outside the lock: the close of one whose character's load
+    // has begun waits for that load (GameSession.Dispose), and the load takes this lock (OnConnected). Closed under
+    // it, the close waited its whole CloseWait for a load that could not go on, then went on beside it.
+    internal void CloseConnecting() {
+        GameSession[] connecting;
+        lock (mutex) {
+            connecting = connectingSessions.ToArray();
+        }
+        foreach (GameSession session in connecting) {
+            session.Send(NoticePacket.Disconnect(new InterfaceText("GameServer Maintenance")));
+            session.Dispose();
+        }
     }
 
     public void Broadcast(ByteWriter packet) {

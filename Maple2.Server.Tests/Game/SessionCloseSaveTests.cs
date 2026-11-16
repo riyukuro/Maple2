@@ -204,6 +204,48 @@ public class SessionCloseSaveTests {
         Assert.That(server.GetSessionOrClosing(session.CharacterId, out _), Is.False);
     }
 
+    // The server's stop while a session that is still connecting loads its character (EnterServer: the gate held,
+    // OnConnected next, which takes the server's lock): the stop returns at once, and the load, which sees the close
+    // has begun, makes no session and prepares no field. Before, the stop closed the connecting sessions under that
+    // lock: the load waited on it, the close waited on the load's gate for its whole CloseWait, then went on beside it.
+    [Test]
+    public void AServerStopDuringTheCharactersLoad_ReturnsPromptly_AndTheLoadEntersNothing() {
+        GameServer server = Playing();
+        session.Field = null;
+        FieldPlayer player = session.Player;
+        SetPlayer(null);
+        session.State = SessionState.ChangeMap;
+        server.OnDisconnected(session);
+        var connecting = (HashSet<GameSession>) typeof(GameServer).GetField("connectingSessions", Any)!.GetValue(server)!;
+        connecting.Add(session);
+        GameSession.CloseWait = TimeSpan.FromSeconds(10);
+        int locksBefore = test.World.Acquired;
+        using var loading = new ManualResetEventSlim();
+        bool entered = false;
+        Task load = Task.Run(() => {
+            lock (InlineGate()) {
+                loading.Set();
+                SpinWait.SpinUntil(() => session.CloseBegun, 5000);
+                server.OnConnected(session);
+                // As EnterServer after its load: a close that began ends the session before it is made.
+                if (!session.CloseBegun) {
+                    SetPlayer(player);
+                    entered = true;
+                }
+            }
+        });
+        loading.Wait();
+
+        Task stop = Task.Run(server.CloseConnecting);
+
+        Assert.That(stop.Wait(5000), Is.True, "the stop waited on the load");
+        Assert.That(load.Wait(5000), Is.True);
+        Assert.That(entered, Is.False);
+        Assert.That(session.WaitDisposed(TimeSpan.FromSeconds(5)), Is.True);
+        Assert.That(session.Player, Is.Null);
+        Assert.That(test.World.Acquired, Is.EqualTo(locksBefore), "a save of a session that never played");
+    }
+
     // A kick of a session that has not begun its load: no load starts after the close (the character's packet that
     // arrives later is dropped).
     [Test]

@@ -47,6 +47,8 @@ public sealed partial class GameSession : Core.Network.Session {
 
     // gameDisposeState: 0 = active, 1 = disposing, 2 = disposed
     private int gameDisposeState;
+    // The session's close has begun (Dispose runs or ran).
+    internal bool CloseBegun => Volatile.Read(ref gameDisposeState) != 0;
     private readonly GameServer server;
 
     public readonly CommandRouter CommandHandler;
@@ -356,6 +358,13 @@ public sealed partial class GameSession : Core.Network.Session {
         if (player == null) {
             Logger.Warning("Failed to load player from database: {AccountId}, {CharacterId}", AccountId, CharacterId);
             Send(MigrationPacket.MoveResult(MigrationError.s_move_err_default));
+            return false;
+        }
+        // A close that began during the load (a kick from a login of the account, the server's stop) waits for this
+        // handler (Dispose): the session ends here, before it is made and before it prepares a field. The load
+        // stored only its own rows (the returner's mail and gift), so no save follows it.
+        if (CloseBegun) {
+            Logger.Information("Character:{CharacterId} was loaded after its session's close began, not entered", CharacterId);
             return false;
         }
         if (locked) {
