@@ -400,4 +400,100 @@ public class ItemMergeHandlerTests {
             Assert.That(session.Item.Inventory.Get(gear.Uid)!.Stats!.HasMergeOption, Is.True);
         });
     }
+
+    // Two empowers of the item: the second rolls a result the player has to pick (a pending choice).
+    private void EmpowerTwice(GameSession session) {
+        Send(session, 1, gear.Uid);
+        Send(session, 2, gear.Uid, crystal.Uid);
+        Send(session, 3, gear.Uid, crystal.Uid);
+        Send(session, 1, gear.Uid);
+        Send(session, 2, gear.Uid, crystal.Uid);
+        Send(session, 3, gear.Uid, crystal.Uid);
+        test.TakeSent();
+    }
+
+    private static object? Pending(GameSession session) => typeof(ItemMergeManager)
+        .GetField("pending", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(session.ItemMerge);
+
+    private void Choose(GameSession session, bool keepNew) => handler.Handle(session, TestGameSession.Packet(writer => {
+        writer.WriteByte(4);
+        writer.WriteBool(keepNew);
+    }));
+
+    // The dialog's load request (mode 0): no pending choice; a pending one with its roll; a pending one whose item
+    // left the bag is answered missing once and then dropped.
+    [Test]
+    public void Info_AnswersThePendingChoice() {
+        GameSession session = Login();
+        Send(session, 0);
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ItemMergePacket.NoPendingChoice()) }));
+
+        EmpowerTwice(session);
+        object pending = Pending(session)!;
+        var roll = (MergeRoll) pending.GetType().GetProperty("Roll")!.GetValue(pending)!;
+        Send(session, 0);
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ItemMergePacket.PendingChoice(gear.Id, gear.Uid, roll)) }));
+
+        Assert.That(session.Item.Inventory.Remove(gear.Uid, out _), Is.True);
+        test.TakeSent();
+        Send(session, 0);
+        Send(session, 0);
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] {
+            Hex(ItemMergePacket.PendingItemMissing(gear.Id)), Hex(ItemMergePacket.NoPendingChoice()),
+        }));
+    }
+
+    // A pick with nothing pending is an unknown error; keeping the old option sends the item as it is and the
+    // smith's line, and the choice is gone; a pending item that left the bag is an invalid merge item.
+    [Test]
+    public void Choice_KeepOldAndRefusals() {
+        GameSession session = Login(crystals: 3);
+        Choose(session, true);
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_unknown)) }));
+
+        EmpowerTwice(session);
+        string before = Hex(ItemMergePacket.Empower(session.Item.Inventory.Get(gear.Uid)!));
+        Choose(session, false);
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { before, Hex(NpcTalkPacket.Update(Done)) }));
+        Assert.That(Pending(session), Is.Null);
+
+        Send(session, 1, gear.Uid);
+        Send(session, 2, gear.Uid, crystal.Uid);
+        Send(session, 3, gear.Uid, crystal.Uid);
+        Assert.That(Pending(session), Is.Not.Null);
+        Assert.That(session.Item.Inventory.Remove(gear.Uid, out _), Is.True);
+        test.TakeSent();
+        Choose(session, true);
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_invalid_mergeitem)) }));
+    }
+
+    // A revert while a choice is pending is an unknown error; one without its price in mesos is lack-meso. Neither
+    // takes the revert item, the mesos or the item's option.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Revert_RefusedTakesNothing(bool pendingChoice) {
+        GameSession session = Login();
+        if (pendingChoice) {
+            EmpowerTwice(session);
+        } else {
+            Send(session, 1, gear.Uid);
+            Send(session, 2, gear.Uid, crystal.Uid);
+            Send(session, 3, gear.Uid, crystal.Uid);
+            session.Item.Inventory.Get(gear.Uid)!.Rarity = 4;
+            session.Item.Inventory.Get(revertScroll.Uid)!.Rarity = 4;
+            session.Currency.Meso = ItemMergeManager.RevertPrice(session.Item.Inventory.Get(gear.Uid)!) - 1;
+        }
+        long meso = session.Currency.Meso;
+        test.TakeSent();
+
+        Send(session, 6, revertScroll.Uid, gear.Uid);
+
+        ItemMergeError error = pendingChoice ? ItemMergeError.s_item_merge_option_error_unknown : ItemMergeError.s_item_merge_option_error_lack_meso;
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ItemMergePacket.Error(error)) }));
+            Assert.That(session.Currency.Meso, Is.EqualTo(meso));
+            Assert.That(session.Item.Inventory.Get(revertScroll.Uid), Is.Not.Null);
+            Assert.That(session.Item.Inventory.Get(gear.Uid)!.Stats!.HasMergeOption, Is.True);
+        });
+    }
 }

@@ -68,4 +68,39 @@ public class SurvivalStormTests {
         game.Update(tick + SurvivalGameField.StormNoticeMs);
         Assert.That(b.TakeSent().Select(System.Convert.ToHexString), Has.Some.EqualTo(inStorm));
     }
+
+    // StormData (82000000's 03_storm.xml: WidgetAction SurvivalContents StormData "1,0", before EnterStep 1): the storm over the KR bounds of 82000000_survival
+    // (MS2Bounding (-21500, 21500, 300) to (21500, -21500, 4500)) is centered at (0, 0) with a start radius of 21500,
+    // and the clients' zones are cleared; after a game's Stop, it starts the steps again. An unknown function changes
+    // nothing.
+    [Test]
+    public void StormData_CentersTheStormOnTheBounds() {
+        MapMetadata map = TestGameSession.Map(82000000);
+        var a = new TestGameSession();
+        a.AddMap(map);
+        a.Start();
+        a.EnterMap(map);
+        FieldManager field = a.Session.Field!;
+        var entities = (MapEntityMetadata) System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(MapEntityMetadata));
+        typeof(MapEntityMetadata).GetField("<BoundingBox>k__BackingField", Any)!.SetValue(entities, new Maple2.Tools.Collision.Prism(
+            new Maple2.Tools.Collision.BoundingBox(new Vector2(-21500, 21500), new Vector2(21500, -21500)), 300, 4200));
+        typeof(FieldManager).GetField("<Entities>k__BackingField", Any)!.SetValue(field, entities);
+        var widget = new SurvivalContentsWidget(field);
+        widget.Stop();
+        a.TakeSent();
+
+        widget.Action("Unknown", 0, "");
+        Assert.That(widget.Storm, Is.Null);
+        Assert.That(widget.Check("TimeOver", ""), Is.False);
+        widget.Action("StormData", 0, "1,0");
+
+        Assert.Multiple(() => {
+            Assert.That(widget.Center, Is.EqualTo(Vector3.Zero));
+            Assert.That(widget.Storm!.StartRadius, Is.EqualTo(21500f));
+            Assert.That(widget.Storm.Step, Is.EqualTo(0));
+            Assert.That(widget.Stopped, Is.False);
+            Assert.That(a.TakeSent().Select(System.Convert.ToHexString),
+                Is.EqualTo(new[] { System.Convert.ToHexString(MapleSurvivalPacket.ClearZones().ToArray()) }));
+        });
+    }
 }
