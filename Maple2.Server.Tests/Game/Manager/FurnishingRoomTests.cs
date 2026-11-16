@@ -173,6 +173,71 @@ public class FurnishingRoomTests {
         });
     }
 
+    // A mailed maid item: its maid is on the stored row before the item's row leaves (the save that writes it to
+    // owner 0 finds the maid keyed to the stored row), so a crash between the two writes leaves the maid on a live
+    // row. Before, the row left first and the maid was moved after it.
+    [Test]
+    public void MailedMaid_IsOnTheStoredRowBeforeTheItemRowLeaves() {
+        GameSession session = Start();
+        StoredItem mailed = MailedMaid(session);
+        long? keyedWhenTheRowLeft = null;
+        test.FailSave = context => {
+            if (context.ChangeTracker.Entries<Maple2.Database.Model.Item>().Any(entry => entry.Entity.Id == mailed.Uid && entry.Entity.OwnerId == 0)) {
+                using var look = new Maple2.Database.Context.Ms2Context(test.Options);
+                keyedWhenTheRowLeft = look.Maid.AsNoTracking().Select(maid => (long?) maid.Id).FirstOrDefault();
+            }
+            return false;
+        };
+
+        bool taken = session.Item.Furnishing.TakeMailed(mailed);
+        test.FailSave = null;
+
+        long stored = session.Item.Furnishing.GetItem(MaidItem)!.Uid;
+        Assert.Multiple(() => {
+            Assert.That(taken, Is.True);
+            Assert.That(keyedWhenTheRowLeft, Is.EqualTo(stored));
+            Assert.That(MaidKeys(), Is.EqualTo(new[] { stored }));
+        });
+    }
+
+    // The same item when the save of its row fails: the maid goes back to the item's row with it (the mail keeps
+    // both), and the stored piece is taken back without deleting the maid.
+    [Test]
+    public void MailedMaid_NotWritten_StaysWithTheMailedItem() {
+        GameSession session = Start();
+        StoredItem mailed = MailedMaid(session);
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Item>().Any(entry => entry.Entity.Id == mailed.Uid && entry.Entity.OwnerId == 0);
+
+        bool taken = session.Item.Furnishing.TakeMailed(mailed);
+        test.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That(taken, Is.False);
+            Assert.That(session.Item.Furnishing.GetItem(MaidItem)?.Amount ?? 0, Is.Zero);
+            Assert.That(MaidKeys(), Is.EqualTo(new[] { mailed.Uid }));
+        });
+    }
+
+    // A one-piece maid item with a row of its own (an attachment) and a maid keyed to it.
+    private StoredItem MailedMaid(GameSession session) {
+        StoredItem mailed;
+        using (Maple2.Database.Storage.GameStorage.Request db = test.Storage.Context()) {
+            mailed = db.CreateItem(MailOwner, Make(session, MaidItem, 1))!;
+        }
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        Maple2.Database.Model.Maid model = new Maid {
+            Uid = mailed.Uid, OwnerId = test.AccountId, ItemId = MaidItem, MaidId = 3, CreationTime = 1700000000, ExpiryTime = 1702592000,
+        }!;
+        context.Maid.Add(model);
+        context.SaveChanges();
+        return mailed;
+    }
+
+    private long[] MaidKeys() {
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        return context.Maid.AsNoTracking().Select(maid => maid.Id).ToArray();
+    }
+
     private const long MailOwner = 900001;
 
     // A one-piece cube item with a row of its own, as an attachment has.

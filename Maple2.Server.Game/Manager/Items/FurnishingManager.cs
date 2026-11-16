@@ -481,6 +481,13 @@ public class FurnishingManager {
             // to owner 0 in the same save: left to the next storage save, a crash lost the pieces that joined a stack
             // (the caller wrote the row to owner 0 at once), and the row left to the caller's bag save (Add without
             // commit) gave the item twice. Not written, the pieces are taken back and the item keeps its row.
+            // A maid item's maid is moved to the stored row (made at once, a maid item takes a slot of its own) before
+            // the item's row goes: moved after, a crash between the two writes left the maid keyed to a dead row.
+            Maid? moved = null;
+            if (maidItem && item.Uid != 0) {
+                using GameStorage.Request db = session.GameStorage.Context();
+                moved = db.MoveMaid(item.Uid, itemUid);
+            }
             Item[] joined = added.Distinct().Select(uid => storage.Get(uid)).OfType<Item>().ToArray();
             bool written;
             using (GameStorage.Request db = session.GameStorage.Context()) {
@@ -488,6 +495,13 @@ public class FurnishingManager {
             }
             if (!written) {
                 logger.Error("Furnishing {ItemId}: the stacks it joined were not written, taken back", item.Id);
+                // The maid goes back to the item first: taking a stored maid item back deletes its maid (RemoveItem).
+                if (moved != null) {
+                    using GameStorage.Request db = session.GameStorage.Context();
+                    if (db.MoveMaid(itemUid, item.Uid) == null) {
+                        logger.Error("Furnishing {ItemId}: maid {ItemUid} not moved back to the item", item.Id, itemUid);
+                    }
+                }
                 for (int j = added.Count - 1; j >= 0; j--) {
                     TakePiece(added[j]);
                 }
@@ -506,14 +520,10 @@ public class FurnishingManager {
             if (storage.Count != count) {
                 session.Send(FurnishingStoragePacket.Count(storage.Count));
             }
-            if (maidItem && item.Uid != 0) {
-                using GameStorage.Request db = session.GameStorage.Context();
-                Maid? moved = db.MoveMaid(item.Uid, itemUid);
-                if (moved != null) {
-                    session.Send(UserMaidPacket.Add(moved));
-                    if (MaidRules.IsCrafting(moved)) {
-                        session.Send(MaidCraftItemPacket.Add(moved));
-                    }
+            if (moved != null) {
+                session.Send(UserMaidPacket.Add(moved));
+                if (MaidRules.IsCrafting(moved)) {
+                    session.Send(MaidCraftItemPacket.Add(moved));
                 }
             }
             return true;
