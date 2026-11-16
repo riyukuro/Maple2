@@ -25,6 +25,7 @@ using Maple2.Server.Game.Util;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Session;
 using Maple2.Model.Common;
+using Maple2.Model.Validators;
 using Maple2.Database.Context;
 using Microsoft.EntityFrameworkCore;
 
@@ -1255,6 +1256,207 @@ public class QuestConditionWiringTests : TriggerTestBase {
 
         Assert.That(test.Errors, Is.Empty);
         Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+    }
+    #endregion
+    #region field entry (GameSession.EnterField: EntryConditions, FirstVisitConditions)
+    private static MapMetadata OnContinent(int id, Continent continent) {
+        MapMetadata map = LimitedMap(id);
+        return map with { Property = map.Property with { Continent = continent } };
+    }
+
+    // 50100240: <condition type="map" code="02000263" value="1" />, an entry into the map counts; another map's does not.
+    [Test]
+    public void Map_50100240_TheEntryOfTheMap() {
+        Start();
+        Quest quest = StartQuest(Condition(ConditionType.map, 1, ["02000263"], []));
+
+        test.EnterMap(LimitedMap(2000001));
+        test.Session.Player.Value.Character.MapId = 2000001;
+        test.Session.EntryConditions();
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        test.EnterMap(LimitedMap(2000263));
+        test.Session.Player.Value.Character.MapId = 2000263;
+        test.Session.EntryConditions();
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+    }
+
+    // 21100001: <condition type="job_change" code="10" value="1" />, the trophy of the knight job: an entry as a knight
+    // (job code 10) counts, an entry as a berserker (20) does not.
+    [Test]
+    public void JobChange_21100001_TheJobHeldAtTheEntry() {
+        Start();
+        test.EnterMap(LimitedMap(2000001));
+        Quest quest = StartQuest(Condition(ConditionType.job_change, 1, ["10"], []));
+
+        test.Session.Player.Value.Character.Job = Job.Berserker;
+        test.Session.EntryConditions();
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        test.Session.Player.Value.Character.Job = Job.Knight;
+        test.Session.EntryConditions();
+
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+    }
+
+    // 22200373: <condition type="explore_continent" code="103" value="10" />, each first visit of a Karkar Island map
+    // (continent 103) counts; a Victoria Island map (102) does not. 71000064: <condition type="continent" code="202" />,
+    // a first visit on the Shadow World (202). 22200185: <condition type="explore" code="03000001-03999999" value="10" />,
+    // a first visit of a map in the range.
+    [Test]
+    public void FirstVisit_22200373_71000064_22200185_TheContinentAndTheMap() {
+        Start();
+        Quest quest = StartQuest(
+            Condition(ConditionType.explore_continent, 10, ["103"], []),
+            Condition(ConditionType.continent, 1, ["202"], []),
+            Condition(ConditionType.explore, 10, ["03000001-03999999"], []));
+
+        test.EnterMap(OnContinent(2000001, Continent.VictoriaIsland));
+        test.Session.FirstVisitConditions();
+        Assert.That(quest.Conditions.Values.Select(condition => condition.Counter), Is.EqualTo(new[] { 0, 0, 0 }));
+        test.EnterMap(OnContinent(3000010, Continent.KarkarIsland));
+        test.Session.FirstVisitConditions();
+        Assert.That(quest.Conditions.Values.Select(condition => condition.Counter), Is.EqualTo(new[] { 1, 0, 1 }));
+        test.EnterMap(OnContinent(2010043, Continent.ShadowWorld));
+        test.Session.FirstVisitConditions();
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions.Values.Select(condition => condition.Counter), Is.EqualTo(new[] { 1, 1, 1 }));
+    }
+    #endregion
+
+    #region the killing blow (FieldNpc.OnDeath with a last attacker)
+    // The npc dies by the player's blow (FieldNpc.OnDeath): it is the npc's last attacker as well as a dealer.
+    private void KillByBlow(int npcId) {
+        Field.Players.TryAdd(test.Session.Player.ObjectId, test.Session.Player);
+        if (Field.StringIdDeaths is null) {
+            typeof(FieldManager).GetField("<StringIdDeaths>k__BackingField", Any)!.SetValue(Field, new NpcStringIdDeaths());
+            typeof(FieldManager).GetField(nameof(FieldManager.Widgets), Any)!.SetValue(Field, new Dictionary<string, Maple2.Server.Game.Model.Widget.Widget>());
+        }
+        Assert.That(Field.NpcMetadata.TryGet(npcId, out NpcMetadata? metadata), Is.True);
+        FieldNpc npc = Field.SpawnNpc(metadata!, new Vector3(100, 0, 0), Vector3.Zero)!;
+        var dealers = (ConcurrentDictionary<int, DamageRecordTarget>) typeof(Actor<Npc>).GetField("DamageDealers", Any)!.GetValue(npc)!;
+        dealers[test.Session.Player.ObjectId] = new DamageRecordTarget(test.Session.Player);
+        typeof(FieldNpc).GetField("lastAttackerObjectId", Any)!.SetValue(npc, test.Session.Player.ObjectId);
+        typeof(FieldNpc).GetMethod("OnDeath", Any)!.Invoke(npc, []);
+    }
+
+    // 21231003: <condition type="npc_lasthit" code="23000019" value="1" />, the killing blow on the field boss counts;
+    // a kill the player only dealt damage to, and a blow on another npc, do not.
+    [Test]
+    public void NpcLastHit_21231003_TheBlowOnTheBoss() {
+        StartField(2000001, Npc(23000019), Npc(23000020));
+        Quest quest = StartQuest(Condition(ConditionType.npc_lasthit, 1, ["23000019"], []));
+
+        Kill(23000019);
+        KillByBlow(23000020);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        KillByBlow(23000019);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+    }
+
+    // 22200343: <condition type="npc_lasthit_buff" code="21000001-99999999" target="49116002" />, a killing blow on any
+    // monster while the killer holds the effect 49116002 (poisoned by Havi) counts; without the effect it does not.
+    [Test]
+    public void NpcLastHitBuff_22200343_TheBlowUnderTheEffect() {
+        StartField(2000001, Npc(21000001));
+        WithEffect(49116002);
+        Quest quest = StartQuest(Condition(ConditionType.npc_lasthit_buff, 1, ["21000001-99999999"], ["49116002"]));
+
+        KillByBlow(21000001);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        test.Session.Player.Buffs.AddBuff(Field.FieldActor, test.Session.Player, 49116002, 1, Field.FieldTick);
+        KillByBlow(21000001);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+    }
+    #endregion
+
+    #region fish size (FishingManager.AddFish, the catch's conditions)
+    // A catch of the given size on the map, through the catch's own report (sizes: small 20-30, big 40-50).
+    private void CatchOfSize(int mapId, int fishId, int size) {
+        var fish = new FishTable.Fish(fishId, LiquidType.water, 80, 6, 1, 3, 1, 54, 15000, 10000, 8000,
+            new FishTable.Range<int>(20, 30), new FishTable.Range<int>(40, 50), [], 0, false);
+        test.SetServerTable(new FishTable(new Dictionary<int, FishTable.Fish> { [fish.Id] = fish },
+            new Dictionary<int, FishTable.Spot> { [mapId] = new(mapId, 0, 1189, [LiquidType.water], 0, 0, 0, 0, 1, 1) },
+            new Dictionary<int, IReadOnlyDictionary<short, FishTable.Lure>>(), new Dictionary<int, FishTable.FishBox>(),
+            new Dictionary<int, FishTable.FishBox>()));
+        test.Session.Fishing = new FishingManager(test.Session, test.TableMetadata, test.ServerTableMetadata);
+        typeof(FishingManager).GetField("selectedFish", Any)!.SetValue(test.Session.Fishing, fish);
+        var report = (Action) typeof(FishingManager).GetMethod("AddFish", Any)!.Invoke(test.Session.Fishing, [size, false])!;
+        report();
+    }
+
+    private void StartFishing(int mapId) {
+        Start();
+        test.EnterMap(LimitedMap(mapId));
+        SetSkills();
+        test.SetTable(new MasteryRewardTable(new Dictionary<MasteryType, IReadOnlyDictionary<int, MasteryRewardTable.Entry>>()));
+        test.SetTable(new CommonExpTable(new Dictionary<ExpType, CommonExpTable.Entry>()));
+    }
+
+    // 80010231: <condition type="fish_big" target="63000062" value="7" />: the client's big fish is the largest size
+    // class (UIRewardNotify's bigFish, class 3), past the big size; a catch of that size on the map counts, a gold-medal
+    // size or another map does not.
+    [Test]
+    public void FishBig_80010231_ALargestSizeCatchOnTheMap() {
+        StartFishing(63000062);
+        Quest quest = StartQuest(Condition(ConditionType.fish_big, 7, [], ["63000062"]));
+
+        CatchOfSize(63000062, 10000001, 49);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        CatchOfSize(63000062, 10000001, 50);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+        test.EnterMap(LimitedMap(63000063));
+        SetSkills();
+        CatchOfSize(63000063, 10000001, 60);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+    }
+    #endregion
+
+    #region quest_field, play_rps results
+    // 93000160: <condition type="quest_field" code="1" value="1" />, a completed field mission of the Dark Wind
+    // (alliance 1) counts; one of the Maple Alliance, or an alliance quest of the Dark Wind, does not.
+    [Test]
+    public void QuestField_93000160_AFieldMissionOfTheAlliance() {
+        StartCompletion();
+        Quest quest = StartQuest(Condition(ConditionType.quest_field, 1, ["1"], []));
+        QuestMetadataBasic field = TestGameSession.QuestData(0, QuestType.FieldQuest).Basic;
+        QuestMetadataBasic alliance = TestGameSession.QuestData(0, QuestType.AllianceQuest).Basic;
+
+        Assert.That(test.Session.Quest.Complete(Completed(10002541, field with { Alliance = AllianceType.MapleAlliance })), Is.True);
+        Assert.That(test.Session.Quest.Complete(Completed(10002542, alliance with { Alliance = AllianceType.DarkWind })), Is.True);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        Assert.That(test.Session.Quest.Complete(Completed(10002543, field with { Alliance = AllianceType.DarkWind })), Is.True);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+    }
+
+    // 92000159 (play_rps_win), 92000161 (play_rps_lose), 92000160 (play_rps_draw), each code="20302428" value="20": a
+    // finished game with that event's ticket counts for its result only; a game of another ticket counts for none.
+    [Test]
+    public void PlayRps_92000159_92000160_92000161_TheResultWithTheTicket() {
+        Start();
+        Quest quest = StartQuest(
+            Condition(ConditionType.play_rps_win, 20, ["20302428"], []),
+            Condition(ConditionType.play_rps_lose, 20, ["20302428"], []),
+            Condition(ConditionType.play_rps_draw, 20, ["20302428"], []));
+
+        MicrogameHandler.ReportResult(test.Session, RpsRules.Win, 20302161);
+        Assert.That(quest.Conditions.Values.Select(condition => condition.Counter), Is.EqualTo(new[] { 0, 0, 0 }));
+        MicrogameHandler.ReportResult(test.Session, RpsRules.Win, 20302428);
+        MicrogameHandler.ReportResult(test.Session, RpsRules.Lose, 20302428);
+        MicrogameHandler.ReportResult(test.Session, RpsRules.Lose, 20302428);
+        MicrogameHandler.ReportResult(test.Session, RpsRules.Draw, 20302428);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions.Values.Select(condition => condition.Counter), Is.EqualTo(new[] { 1, 2, 1 }));
     }
     #endregion
 }
