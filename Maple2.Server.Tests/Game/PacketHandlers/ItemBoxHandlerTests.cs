@@ -862,4 +862,52 @@ public class ItemBoxHandlerTests {
             Assert.That(Held(session, RewardA) + Held(session, RewardB), Is.EqualTo(given));
         });
     }
+
+    // A transcendence crystal (group 3 type 70) on its KR shape, 37000013: <function name="OpenItemBox"
+    // parameter="<v globalDropLevel="0" globalDropRank="1" globalDropBoxId="0" individualDropBoxId="330002090"
+    // notifyBox="s_msg_item_open_item_box_mergeitem"/>" />. One crystal opens its individual box.
+    [Test]
+    public void TranscendenceCrystal_OpensItsIndividualBox() {
+        const int crystalId = 37000013;
+        string parameters = $"<v globalDropLevel=\"0\" globalDropRank=\"1\" globalDropBoxId=\"0\" individualDropBoxId=\"{DropBoxId}\" notifyBox=\"s_msg_item_open_item_box_mergeitem\"/>";
+        test = new TestGameSession();
+        test.Register(TestGameSession.Metadata(RewardA), TestGameSession.Metadata(RewardB));
+        test.SetServerTable(new IndividualDropItemTable(new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>> {
+            [DropBoxId] = TestGameSession.DropBox([(RewardA, 3)], [(RewardB, 1)]),
+        }));
+        test.SetServerTable(new GlobalDropItemBoxTable(new Dictionary<int, Dictionary<int, IList<GlobalDropItemBoxTable.Group>>>(),
+            new Dictionary<int, IList<GlobalDropItemBoxTable.Item>>()));
+        box = test.Store(TestGameSession.Metadata(crystalId, function: new ItemMetadataFunction(ItemFunction.OpenItemBox, "OpenItemBox", parameters, false)), amount: 2);
+        GameSession session = test.Start();
+        test.TakeSent();
+        Assert.That(box.Type.IsTranscendenceCrystal, Is.True);
+
+        Use(session);
+
+        Assert.Multiple(() => {
+            Assert.That(Held(session, crystalId), Is.EqualTo(1));
+            Assert.That(Held(session, RewardA), Is.EqualTo(3));
+            Assert.That(Held(session, RewardB), Is.EqualTo(1));
+        });
+    }
+
+    // A drop row with isAnnounce is announced to the world with a link to the stack that took the item, the box's id
+    // in the line; the row without it stays quiet.
+    [Test]
+    public void AnnouncedRow_IsAnnouncedWithTheItemsLink() {
+        GameSession session = Login(ItemFunction.OpenItemBox, $"0,0,0,{DropBoxId}", amount: 1);
+        IDictionary<int, IndividualDropItemTable.Entry> rows = TestGameSession.DropBox([(RewardA, 3)], [(RewardB, 1)]);
+        rows[1] = rows[1] with { Items = [rows[1].Items[0] with { Announce = true }] };
+        test.SetServerTable(new IndividualDropItemTable(new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>> { [DropBoxId] = rows }));
+
+        Use(session);
+
+        Item reward = session.Item.Inventory.Find(RewardA).Single();
+        Assert.Multiple(() => {
+            Assert.That(test.World.Chats, Has.Count.EqualTo(1));
+            Assert.That(test.World.Chats.Single().ItemUids, Is.EqualTo(new[] { reward.Uid }));
+            Assert.That(test.World.Chats.Single().Message, Is.EqualTo(Maple2.Server.Game.Util.ChatUtil.ItemBoxAnnouncement(reward.Uid, session.PlayerName, BoxId)));
+            Assert.That(Held(session, RewardB), Is.EqualTo(1));
+        });
+    }
 }
