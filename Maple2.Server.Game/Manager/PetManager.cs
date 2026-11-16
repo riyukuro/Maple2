@@ -387,12 +387,13 @@ public sealed class PetManager : IDisposable {
     }
 
     public void Dispose(bool fieldChange) {
+        // Not after the save before a move stored it (GameSession.MoveStored): the next server may have loaded the
+        // pet's bag already, and a write from here would land after that load. Made outside the bag lock (Save takes
+        // it): SaveAlone locks the account row first, as the session's save does before it takes the bag lock.
+        if (!session.MoveStored) {
+            session.SaveAlone("Pet", Save);
+        }
         lock (session.Item) {
-            // Not after the save before a move stored it (GameSession.MoveStored): the next server may have loaded
-            // the pet's bag already, and a write from here would land after that load.
-            if (!session.MoveStored) {
-                session.SaveAlone("Pet", Save);
-            }
             // The bag goes with the pet item (GameStorage reads it at load); the client's compose and evolve tabs read
             // it too (s_err_cannot_compose_petitem_hasitem, s_err_cannot_evolution_petitem_hasitem).
             bool hasItems = items.Count > 0;

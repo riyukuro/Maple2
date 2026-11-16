@@ -18,8 +18,16 @@ public class StorageInventoryHandlerTests {
     private readonly StorageInventoryHandler handler = new();
     private Item stack = null!;
 
-    private GameSession Open(long meso = 0, bool transferEvent = false) {
-        test = new TestGameSession();
+    // Runs where a transaction of the test's store begins (the in-memory store logs it as ignored), on that thread.
+    private Action? onBegin;
+
+    // hooks: a store whose transaction begins run onBegin.
+    private GameSession Open(long meso = 0, bool transferEvent = false, bool hooks = false) {
+        test = !hooks ? new TestGameSession() : new TestGameSession(new DbContextOptionsBuilder()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .ConfigureWarnings(warnings => warnings.Log(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning))
+            .LogTo(_ => onBegin?.Invoke(), [Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning])
+            .Options);
         if (transferEvent) {
             test.AddEvent(20203, Maple2.Model.Enum.GameEventType.TransferItemBound, new Maple2.Model.Metadata.TransferItemBound(true));
         }
@@ -739,5 +747,34 @@ public class StorageInventoryHandlerTests {
 
         Assert.That(session.Storage, Is.Null);
         Assert.That(StoredMesos(session), Is.Zero);
+    }
+
+    // The close's write takes the account row before the bag lock, as the session's save does (its generation check
+    // first, then the components under the bag lock). Before, the close held the bag lock when it began, the reverse
+    // order: a close beside a save on the field thread could wait on each other until the database's lock timeout.
+    [Test]
+    public void TheClosesWrite_BeginsOutsideTheBagLock() {
+        GameSession session = Open(hooks: true);
+        bool? bagHeld = null;
+        onBegin = () => bagHeld ??= System.Threading.Monitor.IsEntered(session.Item);
+
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(15)));
+
+        Assert.That(bagHeld, Is.False);
+    }
+
+    // A close's write that throws where it begins (a lock wait that timed out, a dropped connection): the close goes on,
+    // the storage is let go, and nothing is thrown at the close (at LeaveField, a throw skipped the rest of it and the
+    // last save). Logged.
+    [Test]
+    public void AClosesWriteThatThrows_StillClosesTheStorage() {
+        GameSession session = Open(hooks: true);
+        onBegin = () => throw new InvalidOperationException("lock wait timeout");
+
+        Assert.DoesNotThrow(() => session.Storage!.Dispose());
+
+        onBegin = null;
+        Assert.That(session.Storage, Is.Null);
+        Assert.That(test.Errors, Has.Some.Contains("not stored: the write threw"));
     }
 }

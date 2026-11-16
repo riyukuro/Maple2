@@ -55,13 +55,13 @@ public sealed class StorageManager : IDisposable {
     // server may have loaded the account already, and a write from here would land after that load. The close's
     // write is the session's (GameSession.SaveAlone): it writes nothing once another entry of the account claimed it
     // (a relog whose kick of this session did not wait for its end).
+    // The write is made outside the bag lock (Save takes it): SaveAlone locks the account row first, as the
+    // session's save does before it takes the bag lock.
     public void Dispose() {
-        lock (session.Item) {
-            if (!session.MoveStored) {
-                session.SaveAlone("Storage", Save);
-            }
-            session.Storage = null;
+        if (!session.MoveStored) {
+            session.SaveAlone("Storage", Save);
         }
+        session.Storage = null;
     }
 
     public void Delete(long uid) {

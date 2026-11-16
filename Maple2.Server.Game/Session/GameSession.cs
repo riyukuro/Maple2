@@ -2765,21 +2765,19 @@ public sealed partial class GameSession : Core.Network.Session {
     // this session's values while that session holds others (an item lost or doubled).
     // A write of the session's own outside its save (the storage's close, the pet's unsummon): in one transaction,
     // after the same generation check as the save, so it writes nothing once another entry claimed the account.
+    // It does not throw (a lock wait that timed out, a dropped connection): the close it runs in goes on.
     internal void SaveAlone(string what, Func<GameStorage.Request, bool> write) {
-        using GameStorage.Request db = GameStorage.Context();
-        db.BeginTransaction();
-        if (!HoldsSession(db)) {
-            return;
-        }
-        bool stored;
         try {
-            stored = write(db) && db.Commit();
+            using GameStorage.Request db = GameStorage.Context();
+            db.BeginTransaction();
+            if (!HoldsSession(db)) {
+                return;
+            }
+            if (!(write(db) && db.Commit())) {
+                Logger.Error("{What} of {CharacterId} not stored", what, CharacterId);
+            }
         } catch (Exception ex) {
-            Logger.Error(ex, "{What} of {CharacterId}: its commit threw", what, CharacterId);
-            return;
-        }
-        if (!stored) {
-            Logger.Error("{What} of {CharacterId} not stored", what, CharacterId);
+            Logger.Error(ex, "{What} of {CharacterId} not stored: the write threw", what, CharacterId);
         }
     }
 
