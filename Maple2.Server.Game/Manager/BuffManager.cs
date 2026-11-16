@@ -96,7 +96,9 @@ public class BuffManager : IUpdatable {
     // Whether the buff was added or the held one changed (its time or its stacks): false for an effect not in the data,
     // one on cooldown, one the owner is immune to, one that could not be added, or a held one left as it was (a
     // persisting end, no stack to add). The item uses (AddAdditionalEffect, SurvivalScan) keep the item on false.
-    public bool AddBuff(IActor caster, IActor owner, int id, short level, long startTick, int stacks = 0, int durationMs = -1, bool notifyField = true, EventConditionType type = EventConditionType.Activate) {
+    /// <param name="restored">A saved buff put back (SetCacheBuffs): its time left is kept as it is, as the duration
+    /// invokes and the debuff reductions were taken when it was first added.</param>
+    public bool AddBuff(IActor caster, IActor owner, int id, short level, long startTick, int stacks = 0, int durationMs = -1, bool notifyField = true, EventConditionType type = EventConditionType.Activate, bool restored = false) {
         if (!owner.Field.SkillMetadata.TryGetEffect(id, level, out AdditionalEffectMetadata? additionalEffect)) {
             logger.Error("Invalid buff: {SkillId},{Level}", id, level);
             return false;
@@ -114,9 +116,11 @@ public class BuffManager : IUpdatable {
         // IncreaseEffectDuration here). Chosen here: the caster's buffs count, as both the invoke and the effect it
         // names are of the caster's job skills (10400281 lengthens 10400182, both priest effects). Before, the holder's invokes on a skill of the effect's id counted,
         // which no duration invoke is, so none counted.
-        (int invokeValue, float invokeRate) = caster.Buffs.GetEffectInvokeValues(InvokeEffectType.IncreaseEffectDuration, id, additionalEffect.Property.InvokeGroupId);
-        durationMs = Math.Max(0, invokeValue + (int) ((1 + invokeRate) * durationMs));
-        if (Actor is FieldPlayer target) {
+        if (!restored) {
+            (int invokeValue, float invokeRate) = caster.Buffs.GetEffectInvokeValues(InvokeEffectType.IncreaseEffectDuration, id, additionalEffect.Property.InvokeGroupId);
+            durationMs = Math.Max(0, invokeValue + (int) ((1 + invokeRate) * durationMs));
+        }
+        if (!restored && Actor is FieldPlayer target) {
             durationMs = Buff.ReducedDuration(additionalEffect.Property, durationMs,
                 target.Stats.Values[SpecialAttribute.ReduceStun].Total, target.Stats.Values[SpecialAttribute.ReduceDebuff].Total);
         }
@@ -855,7 +859,7 @@ public class BuffManager : IUpdatable {
             }
 
             if (additionalEffect.Property.UseInGameTime || info.MsRemaining > 0) {
-                AddBuff(Actor, Actor, info.Id, (short) info.Level, currentTick, info.Stacks, info.MsRemaining);
+                AddBuff(Actor, Actor, info.Id, (short) info.Level, currentTick, info.Stacks, info.MsRemaining, restored: true);
             }
         }
     }

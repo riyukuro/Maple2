@@ -1166,4 +1166,36 @@ public class BuffAttributeTests {
         Assert.That(Only(10000061).Owner, Is.SameAs(moved));
         Assert.That(Only(10000061).Caster, Is.SameAs(other));
     }
+
+    // A saved buff put back at login or after a server move (SetCacheBuffs) keeps its saved time left: the duration
+    // invokes and the debuff reductions were taken when it was first added. KR 10400281 (the priest's, held: 10400182
+    // +10000 ms) and a status debuff (44200001, 900 s) under 20% debuff reduction. A fresh add still takes both. Before,
+    // each restore took them again (a restored 10400182 got 10 s more), whoever had cast the buff.
+    [Test]
+    public void ARestoredBuffKeepsItsTimeLeft() {
+        Start(MapType.None,
+            Effect(10400281, Plain with { DurationTick = 1_000_000 }) with {
+                InvokeEffect = new AdditionalEffectMetadataInvokeEffect([InvokeEffectType.IncreaseEffectDuration], [10000], [0], 10400182, 0, 0, 0),
+            },
+            Effect(10400182, Plain with { DurationTick = 20000 }),
+            Effect(44200001, Plain with { DurationTick = 900000, Type = BuffType.Debuff, SubType = BuffSubType.Status }));
+        Stat reduce = Player.Stats.Values[SpecialAttribute.ReduceDebuff];
+        (reduce.Total, reduce.Current) = (200, 200);
+        Add(10400281);
+
+        Buffs.SetCacheBuffs([
+            new BuffInfo { Id = 10400182, Level = 1, MsRemaining = 5000, Stacks = 1 },
+            new BuffInfo { Id = 44200001, Level = 1, MsRemaining = 600000, Stacks = 1 },
+        ], 2000);
+
+        Assert.That(Only(10400182).EndTick, Is.EqualTo(7000));
+        Assert.That(Only(44200001).EndTick, Is.EqualTo(602000));
+
+        Buffs.Remove(10400182, Player.ObjectId);
+        Buffs.Remove(44200001, Player.ObjectId);
+        Add(10400182, tick: 3000);
+        Add(44200001, tick: 3000);
+        Assert.That(Only(10400182).EndTick, Is.EqualTo(3000 + 20000 + 10000), "a fresh add takes the invoke");
+        Assert.That(Only(44200001).EndTick, Is.EqualTo(3000 + 720000), "and the reduction");
+    }
 }
