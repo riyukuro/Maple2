@@ -53,7 +53,9 @@ public partial class MovementState {
             return;
         }
 
-        if (faceTarget != 1) {
+        // faceTarget 1 and 3 turn outright (AiStandbyFace.FacesTarget); only the motion's own turn is bounded by the
+        // skill's autoTargeting cone, and only that turn has one.
+        if (!AiStandbyFace.FacesTarget(faceTarget)) {
             SkillMetadataAutoTargeting autoTargeting = metadata.Data.AutoTargeting!;
             if (!AutoTargetFace.Passes(offset, actor.Transform.FrontAxis, autoTargeting.MaxDegree, autoTargeting.MaxDistance, autoTargeting.MaxHeight)) {
                 return;
