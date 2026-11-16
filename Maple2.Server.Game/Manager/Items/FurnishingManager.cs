@@ -477,6 +477,31 @@ public class FurnishingManager {
                 }
                 added.Add(itemUid);
             }
+            // The stacks the pieces joined are written now: the caller writes the item's own row to owner 0 at once
+            // (Discard with commit), so a crash before the next storage save lost the pieces that joined a stack.
+            // Not written, the pieces are taken back and the mail keeps the item.
+            Item[] joined = added.Distinct().Select(uid => storage.Get(uid)).OfType<Item>().ToArray();
+            bool written;
+            using (GameStorage.Request db = session.GameStorage.Context()) {
+                written = db.SaveItems(session.AccountId, joined);
+            }
+            if (!written) {
+                logger.Error("Furnishing {ItemId}: the stacks it joined were not written, taken back", item.Id);
+                for (int j = added.Count - 1; j >= 0; j--) {
+                    TakePiece(added[j]);
+                }
+                Item[] undone = added.Distinct().Select(uid => storage.Get(uid)).OfType<Item>().ToArray();
+                if (undone.Length > 0) {
+                    using GameStorage.Request db = session.GameStorage.Context();
+                    if (!db.SaveItems(session.AccountId, undone)) {
+                        logger.Error("Furnishing {ItemId}: the pieces taken back were not written", item.Id);
+                    }
+                }
+                if (storage.Count != count) {
+                    session.Send(FurnishingStoragePacket.Count(storage.Count));
+                }
+                return false;
+            }
             if (storage.Count != count) {
                 session.Send(FurnishingStoragePacket.Count(storage.Count));
             }

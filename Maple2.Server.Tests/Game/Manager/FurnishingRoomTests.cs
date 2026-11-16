@@ -135,4 +135,55 @@ public class FurnishingRoomTests {
         Assert.That(session.Item.Furnishing.TakeMailed(Make(session, CubeItem, 2)), Is.True);
         Assert.That(session.Item.Furnishing.GetItem(CubeItem)?.Amount, Is.EqualTo(2));
     }
+
+    // A mailed item with a row of its own that joins a stored stack: Add writes the item's row to owner 0 at once, so
+    // the stack is written at once too. Before, it waited for the next storage save, and a crash before it lost the
+    // piece (the mail row gone, the stack one short).
+    [Test]
+    public void Mailed_JoiningAStack_IsStoredAtOnce() {
+        GameSession session = Start();
+        Assert.That(session.Item.Furnishing.AddCube(CubeItem), Is.Not.Zero);
+        StoredItem mailed = Mailed(session);
+
+        Assert.That(session.Item.Inventory.Add(mailed, commit: true), Is.True);
+
+        Assert.Multiple(() => {
+            Assert.That(CubeRows().Where(row => row.Owner == test.AccountId).Sum(row => row.Amount), Is.EqualTo(2));
+            Assert.That(CubeRows().Where(row => row.Owner != test.AccountId && row.Owner != 0), Is.Empty);
+        });
+    }
+
+    // The stack's write fails: the piece is taken back and the add refused, so the mail keeps the item.
+    [Test]
+    public void Mailed_StackNotWritten_StaysInTheMail() {
+        GameSession session = Start();
+        Assert.That(session.Item.Furnishing.AddCube(CubeItem), Is.Not.Zero);
+        StoredItem mailed = Mailed(session);
+
+        test.FailSave = context => context.ChangeTracker.Entries().Any(entry =>
+            entry.Entity is Maple2.Database.Model.Item row && row.OwnerId == test.AccountId && row.Amount == 2);
+        bool added = session.Item.Inventory.Add(mailed, commit: true);
+        test.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That(added, Is.False);
+            Assert.That(session.Item.Furnishing.GetItem(CubeItem)?.Amount, Is.EqualTo(1));
+            Assert.That(CubeRows().Where(row => row.Owner == test.AccountId).Sum(row => row.Amount), Is.EqualTo(1));
+            Assert.That(CubeRows().Where(row => row.Owner == MailOwner).Sum(row => row.Amount), Is.EqualTo(1));
+        });
+    }
+
+    private const long MailOwner = 900001;
+
+    // A one-piece cube item with a row of its own, as an attachment has.
+    private StoredItem Mailed(GameSession session) {
+        using Maple2.Database.Storage.GameStorage.Request db = test.Storage.Context();
+        return db.CreateItem(MailOwner, Make(session, CubeItem, 1))!;
+    }
+
+    private System.Collections.Generic.List<(long Owner, int Amount)> CubeRows() {
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        return EntityFrameworkQueryableExtensions.AsNoTracking(context.Item).Where(row => row.ItemId == CubeItem).AsEnumerable()
+            .Select(row => (row.OwnerId, row.Amount)).ToList();
+    }
 }
