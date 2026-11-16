@@ -32,7 +32,7 @@ public class AiStateTests : TriggerTestBase {
     private FieldNpc npc = null!;
 
     private FieldNpc Spawn(Entry[] battle, Condition[]? reserved = null, Vector3? position = null, string[]? sequences = null,
-            NpcMetadataSkill? skill = null, Entry[]? battleEnd = null, bool onlyDead = false) {
+            NpcMetadataSkill? skill = null, Entry[]? battleEnd = null, bool onlyDead = false, AiPresetDefinition[]? presets = null) {
         Start();
         typeof(FieldManager).GetField("<Navigation>k__BackingField", Any)!.SetValue(Field, TriggerHallGameTests.FlatNavigation());
         typeof(Actor<Maple2.Model.Game.Player>).GetField("<Field>k__BackingField", Any)!.SetValue(test.Session.Player, Field);
@@ -48,7 +48,7 @@ public class AiStateTests : TriggerTestBase {
         }
         typeof(FieldManager).GetField("<NpcMetadata>k__BackingField", Any)!.SetValue(Field, NpcTable(sequences ?? [], Npc(NpcId, skill)));
         typeof(FieldManager).GetField("<AiMetadata>k__BackingField", Any)!.SetValue(Field,
-            AiTable(new AiMetadata(AiPath, reserved ?? [], battle, battleEnd ?? [], [], onlyDead)));
+            AiTable(new AiMetadata(AiPath, reserved ?? [], battle, battleEnd ?? [], presets ?? [], onlyDead)));
         SetTick(1_000_000);
 
         Assert.That(Field.NpcMetadata.TryGet(NpcId, out NpcMetadata? metadata), Is.True);
@@ -712,5 +712,28 @@ public class AiStateTests : TriggerTestBase {
         npc.AiState.Update(Field.FieldTick);
 
         Assert.DoesNotThrow(() => npc.AiState.RunDeathBattleEnd());
+    }
+
+    // <preset> use: the named definition's entries run in its place.
+    [Test]
+    public void Preset_RunsTheNamedDefinition() {
+        Spawn([new AiPreset("Opening")], presets: [new AiPresetDefinition("Opening", [SetValue("Preset", 7)])]);
+
+        npc.AiState.Update(Field.FieldTick);
+
+        Assert.That(npc.AiExtraData["Preset"], Is.EqualTo(7));
+    }
+
+    // A skill index the npc lacks: the node casts nothing; the warning is logged once per npc, script and index.
+    [Test]
+    public void SkillNode_WithAnIndexTheNpcLacks_DoesNotThrow_AndWarnsOnce() {
+        Spawn([SkillAt(5)]);
+
+        Assert.DoesNotThrow(() => npc.AiState.Update(Field.FieldTick));
+
+        Assert.Multiple(() => {
+            Assert.That(AiState.FirstMissingSkill(NpcId, AiPath, 6), Is.True);
+            Assert.That(AiState.FirstMissingSkill(NpcId, AiPath, 6), Is.False);
+        });
     }
 }
