@@ -74,6 +74,51 @@ public class PetLapenshardWardrobeHandlerTests {
         Assert.That(session.Item.Inventory.Find(NextShardId).Sum(item => item.Amount), Is.EqualTo(1));
     }
 
+    // The same upgrade with no session save after it (a crash): the rows still hold the 9 lapenshards and the 50
+    // crystals, as before it; the bag save then writes 4, the upgraded one and 30 crystals. Before, the lapenshard
+    // taken off was split off to owner 0, and a crash lost it while the fodder and crystals came back.
+    [Test]
+    public void LapenshardUpgrade_ACrashKeepsTheOldStackAndTheSaveTheNew() {
+        var test = new TestGameSession();
+        ItemMetadata crystalData = TestGameSession.Metadata(40100001, type: 2);
+        crystalData = crystalData with { Property = crystalData.Property with { Tag = ItemTag.RedCrystal } };
+        Item shards = test.Store(TestGameSession.Metadata(ShardId, type: 21), amount: 9);
+        test.Store(crystalData, amount: 50);
+        test.Register(TestGameSession.Metadata(NextShardId, type: 21));
+        test.SetTable(new LapenshardUpgradeTable(new Dictionary<int, LapenshardUpgradeTable.Entry> {
+            [ShardId] = new(1, 1, NextShardId, 4, [new LapenshardUpgradeTable.Ingredient(ItemTag.RedCrystal, 20)], 1000),
+        }));
+        GameSession session = test.Start();
+        var handler = new LapenshardHandler { TableMetadata = test.TableMetadata, ItemMetadata = session.ItemMetadata };
+        session.Currency.Meso = 5000;
+        test.TakeSent();
+
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(5);
+            writer.WriteLong(shards.Uid);
+            writer.WriteInt(ShardId);
+            writer.WriteInt(0);
+            writer.WriteInt(1);
+            writer.WriteLong(shards.Uid);
+            writer.WriteInt(4);
+        }));
+        Assert.That(session.Item.Inventory.Find(NextShardId).Sum(item => item.Amount), Is.EqualTo(1));
+        int Held(int itemId) {
+            using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+            return Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.AsNoTracking(context.Item)
+                .Where(row => row.ItemId == itemId && row.OwnerId == test.CharacterId).AsEnumerable().Sum(row => row.Amount);
+        }
+        var crashed = (Held(ShardId), Held(NextShardId), Held(40100001));
+        using (Maple2.Database.Storage.GameStorage.Request db = test.Storage.Context()) {
+            session.Item.Inventory.Save(db);
+        }
+
+        Assert.Multiple(() => {
+            Assert.That(crashed, Is.EqualTo((9, 0, 50)), "no save: as before the upgrade");
+            Assert.That((Held(ShardId), Held(NextShardId), Held(40100001)), Is.EqualTo((4, 1, 30)), "saved: the upgrade");
+        });
+    }
+
     // Two rows naming one tag need their sum: 30 crystals cover each 20 alone but not both, so the fusion is
     // refused with the fodder, the meso and the crystals untouched (a check per row let the fodder and the meso
     // go before Consume failed on the second row).

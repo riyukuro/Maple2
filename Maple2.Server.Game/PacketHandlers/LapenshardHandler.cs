@@ -220,7 +220,10 @@ public class LapenshardHandler : FieldPacketHandler {
             return false;
         }
 
-        if (!session.Item.Inventory.Remove(lapenshardUid, out Item? lapenshard, 1)) {
+        // Taken off without a split (TakeOff): a crash before the session save, which writes the upgraded lapenshard
+        // with the price, keeps the stack whole (the fodder taken off it too) and the price. The split wrote the stack
+        // at once with the fodder taken and lost the lapenshard.
+        if (!session.Item.Inventory.TakeOff(lapenshardUid, 1, out Item? lapenshard)) {
             throw new InvalidOperationException($"Failed to remove lapenshard: {lapenshardUid} after validating");
         }
 
