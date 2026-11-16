@@ -1,6 +1,8 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Session;
@@ -66,5 +68,64 @@ public class NpcTransportFareTests {
     [Test]
     public void ATalkerShortOfTheFare_DoesNotRide() {
         Assert.That(Ride(Fare - 1, Outcome.Went), Is.Zero);
+    }
+
+    // A ride sold by a script function (KR 11000994 script 64: one 20000087 for the move to 2000183, nothing else
+    // given): the price, items and mesos, comes back when the field change is refused. Returns the mesos and tickets
+    // held after the talk, and the tickets stored.
+    private const int Ticket = 30000193;
+
+    private static (long Meso, int Tickets, int StoredTickets) RideByFunction(Outcome outcome) {
+        var test = new TestGameSession();
+        MapMetadata from = Field(From);
+        test.AddMap(from, Field(To, notInPlayedClient: outcome == Outcome.RefusedHere));
+        test.Store(TestGameSession.Metadata(Ticket), 1);
+        var function = new ScriptFunctionMetadata(NpcId, 64, ScriptType.Npc, 1, false, 0, "", "", "", To, 50, "", "", [],
+            [new ItemComponent(Ticket, -1, 1, ItemTag.None)], 0, "", "", "", 0, 1000, 0, 0, false);
+        test.SetServerTable(new ScriptFunctionTable(new Dictionary<int, Dictionary<int, Dictionary<int, ScriptFunctionMetadata>>> {
+            [NpcId] = new() { [64] = new() { [1] = function } },
+        }));
+        GameSession session = test.Start();
+        if (outcome == Outcome.RefusedHere) {
+            test.EnterMap(from);
+        } else {
+            test.EnterMovingOut(from);
+            if (outcome == Outcome.WorldRefused) {
+                test.World.MoveAddress = "";
+            }
+        }
+        session.Currency.Meso = 10000;
+
+        var state = new ScriptState(64, ScriptStateType.Script, false, null, [new CinematicContent("", NpcTalkButton.Close, 1, [], [])]);
+        var script = new ScriptMetadata(NpcId, ScriptType.Npc, new Dictionary<int, ScriptState> { [64] = state });
+        session.NpcScript = new NpcScriptManager(session, null, script, state, NpcTalkType.Talk);
+        session.NpcScript.ProcessScriptFunction();
+
+        int tickets = session.Item.Inventory.Find(Ticket).Sum(item => item.Amount);
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        int stored = context.Item.Where(row => row.ItemId == Ticket && row.OwnerId == test.CharacterId).AsEnumerable().Sum(row => row.Amount);
+        return (session.Currency.Meso, tickets, stored);
+    }
+
+    [Test]
+    public void AFunctionsRideThatWent_TakesThePrice() {
+        (long meso, int tickets, int stored) = RideByFunction(Outcome.Went);
+        Assert.Multiple(() => {
+            Assert.That(meso, Is.EqualTo(9000));
+            Assert.That(tickets, Is.Zero);
+            Assert.That(stored, Is.Zero);
+        });
+    }
+
+    // Before, the price stayed taken, stored at once, with no ride.
+    [TestCase(Outcome.WorldRefused)]
+    [TestCase(Outcome.RefusedHere)]
+    public void AFunctionsRefusedRide_GivesThePriceBack(Outcome outcome) {
+        (long meso, int tickets, int stored) = RideByFunction(outcome);
+        Assert.Multiple(() => {
+            Assert.That(meso, Is.EqualTo(10000));
+            Assert.That(tickets, Is.EqualTo(1));
+            Assert.That(stored, Is.EqualTo(1));
+        });
     }
 }

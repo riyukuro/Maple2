@@ -535,8 +535,30 @@ public sealed class NpcScriptManager {
         }
 
         if (scriptFunction.MoveMapId > 0) {
-            session.SendFieldEnter(session.PrepareField(scriptFunction.MoveMapId, portalId: scriptFunction.MovePortalId > 0 ? scriptFunction.MovePortalId : -1));
+            int portalId = scriptFunction.MovePortalId > 0 ? scriptFunction.MovePortalId : -1;
+            if ((meso > 0 || taken.Count > 0) && OnlyAMove(scriptFunction)) {
+                // A ride sold for a price (KR 11000994 script 64: one 20000087 for the move to 2000183): the price is
+                // given back when the field change does not go (the field not made, the World refusing a move to
+                // another server), as a taxi's fare. Before, it stayed taken (stored at once) with no ride.
+                bool went = false;
+                bool prepared = session.PaidFieldChange(scriptFunction.MoveMapId, () => went = true, portalId: portalId);
+                if (!went) {
+                    GiveBackPrice(scriptFunction, meso, sendsBefore, taken);
+                }
+                session.SendFieldEnter(prepared);
+            } else {
+                session.SendFieldEnter(session.PrepareField(scriptFunction.MoveMapId, portalId: portalId));
+            }
         }
+    }
+
+    // The function gives nothing but its field change: no present, exp, effect, window, trigger value, portal move,
+    // divorce or maid step. Its price is then the move's alone.
+    private static bool OnlyAMove(ScriptFunctionMetadata function) {
+        return function.PresentItems.Count == 0 && function.GlobalDropBoxId == 0 && function.IndividualDropBoxId == 0
+            && function.PresentExp == 0 && function.EffectId == 0 && string.IsNullOrEmpty(function.UiName)
+            && string.IsNullOrEmpty(function.SetTriggerValueKey) && string.IsNullOrEmpty(function.Divorce) && function.PortalId == 0
+            && function.MaidMoodIncrease == 0 && function.MaidClosenessIncrease == 0 && !function.MaidPay;
     }
 
     // Takes a script function's price: collectMeso plus the collected meso items (90000001-90000003, whose amount is
