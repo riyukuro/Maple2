@@ -153,6 +153,68 @@ public class ShopHandlerTests {
         }));
     }
 
+    // An item the shop does not buy (its limit's shopSell off), one with a gemstone in a socket and one locked are refused
+    // with code 5 and the sell command's number (KMS2's answer); the item stays and no mesos are paid.
+    [TestCase("notForSale")]
+    [TestCase("gemstone")]
+    [TestCase("locked")]
+    public void Sell_OfAnItemTheShopWillNotBuyIsRefusedAndKept(string reason) {
+        Item? notForSale = null;
+        beforeStart = () => {
+            ItemMetadata metadata = TestGameSession.Metadata(20000005);
+            notForSale = test.Store(metadata with { Limit = metadata.Limit with { ShopSell = reason != "notForSale" } });
+        };
+        GameSession session = Login();
+        Item item = session.Item.Inventory.Get(notForSale!.Uid)!;
+        switch (reason) {
+            case "gemstone":
+                item.Socket = new ItemSocket(1, [new ItemGemstone(20000001, stats: new ItemStats())]);
+                break;
+            case "locked":
+                item.IsLocked = true;
+                item.UnlockTime = DateTimeOffset.UtcNow.AddDays(1).ToUnixTimeSeconds();
+                break;
+        }
+        long meso = session.Currency.Meso;
+
+        Sell(session, notForSale!.Uid, 1);
+
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ShopPacket.Error(ShopError.s_err_cannot_sell_item, 5)) }));
+            Assert.That(session.Item.Inventory.Get(notForSale!.Uid), Is.Not.Null);
+            Assert.That(session.Currency.Meso, Is.EqualTo(meso));
+        });
+    }
+
+    // A buy the wallet cannot pay is answered with the lack notice of its currency and the buy's command number, and
+    // takes nothing: merets (event and game merets too) s_err_lack_merat; a payment item the item's own id; any other
+    // currency s_err_lack_meso with the currency kind in the last int (uishopdialog.cpp ReadShopError).
+    [Test]
+    public void Buy_WithoutTheCurrencyIsRefusedWithItsLackNotice() {
+        GameSession session = Login();
+        session.Currency.Meret = 0;
+        test.TakeSent();
+        long meso = session.Currency.Meso;
+        var expected = new List<string> {
+            Hex(ShopPacket.Error(ShopError.s_err_lack_merat, BuyCommand)),
+            Hex(ShopPacket.Error(ShopError.s_err_lack_merat, BuyCommand)),
+            Hex(ShopPacket.Error(ShopError.s_err_lack_merat, BuyCommand)),
+            Hex(ShopPacket.Error(ShopError.s_err_lack_payment_item, BuyCommand, PaymentItemId)),
+            Hex(ShopPacket.Error(ShopError.s_err_lack_meso, BuyCommand, (int) ShopCurrencyType.Treva)),
+            Hex(ShopPacket.Error(ShopError.s_err_lack_meso, BuyCommand, (int) ShopCurrencyType.ValorToken)),
+        };
+
+        foreach (int product in new[] { EventMeretProductId, GameMeretProductId, EventMeretProductId, ItemCostProductId, TrevaProductId, ValorProductId }) {
+            Buy(session, product, 1);
+        }
+
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString).ToList(), Is.EqualTo(expected));
+            Assert.That(session.Currency.Meso, Is.EqualTo(meso));
+            Assert.That(session.Item.Inventory.Find(ProductItemId), Is.Empty);
+        });
+    }
+
     private static byte Sub(byte[] packet) => packet[2];
 
     // The price paid counts for the trophy of the currency paid only: shop_buy for mesos, shop_buy_karma_token for
