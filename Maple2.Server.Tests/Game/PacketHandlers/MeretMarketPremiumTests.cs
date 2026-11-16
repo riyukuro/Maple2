@@ -145,6 +145,29 @@ public class MeretMarketPremiumTests {
         });
     }
 
+    // A furnishing bought into a stored stack: the bought row (the character's from the purchase save) goes to owner
+    // 0 in the save that raises the stack, so a crash before the next bag save holds the cube once. Before, the stack
+    // was written while the bought row waited for the bag save, and a reload had the cube in both.
+    [Test]
+    public void AFurnishingJoiningAStoredStack_IsHeldOnceWithNoBagSave() {
+        const int cube = 50400001;
+        test.Register(TestGameSession.Metadata(cube, slotMax: 5));
+        Assert.That(session.Item.Furnishing.AddCube(cube), Is.Not.Zero);
+        SetMarket(Row(Package) with { ItemId = cube });
+
+        Buy(Package);
+
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        List<(long OwnerId, int Amount)> rows = context.Item.AsNoTracking().Where(row => row.ItemId == cube).AsEnumerable()
+            .Select(row => (row.OwnerId, row.Amount)).ToList();
+        Assert.Multiple(() => {
+            Assert.That(Answer().Sub, Is.EqualTo(0x1E));
+            Assert.That(session.Item.Furnishing.GetItem(cube)?.Amount, Is.EqualTo(2));
+            Assert.That(rows.Where(row => row.OwnerId == test.AccountId).Sum(row => row.Amount), Is.EqualTo(2));
+            Assert.That(rows.Where(row => row.OwnerId != test.AccountId && row.OwnerId != 0), Is.Empty, "no row is left with the character");
+        });
+    }
+
     // A refused buy counts nothing, and neither does a design.
     [Test]
     public void ARefusedBuy_OrADesign_CountsNothing() {

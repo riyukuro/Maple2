@@ -477,13 +477,14 @@ public class FurnishingManager {
                 }
                 added.Add(itemUid);
             }
-            // The stacks the pieces joined are written now: the caller writes the item's own row to owner 0 at once
-            // (Discard with commit), so a crash before the next storage save lost the pieces that joined a stack.
-            // Not written, the pieces are taken back and the mail keeps the item.
+            // The stacks the pieces joined are written now, with the item's own row (a mail attachment, a bought row)
+            // to owner 0 in the same save: left to the next storage save, a crash lost the pieces that joined a stack
+            // (the caller wrote the row to owner 0 at once), and the row left to the caller's bag save (Add without
+            // commit) gave the item twice. Not written, the pieces are taken back and the item keeps its row.
             Item[] joined = added.Distinct().Select(uid => storage.Get(uid)).OfType<Item>().ToArray();
             bool written;
             using (GameStorage.Request db = session.GameStorage.Context()) {
-                written = db.SaveItems(session.AccountId, joined);
+                written = db.SaveItems(session.AccountId, joined, item.Uid != 0 ? [item] : []);
             }
             if (!written) {
                 logger.Error("Furnishing {ItemId}: the stacks it joined were not written, taken back", item.Id);
