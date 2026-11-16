@@ -4,11 +4,12 @@ using Maple2.Server.Game.Util;
 namespace Maple2.Server.Tests.Game.Util;
 
 public class AiStandbyFaceTests {
-    // A standby node with faceTarget="1" turns the npc to its target; absent (0) and other values (3) do not.
+    // A standby node with faceTarget="1" or "3" turns the npc to its target; absent (0) and other values (10) do not.
     [TestCase(1, true)]
     [TestCase(0, false)]
-    [TestCase(3, false)]
-    public void OnlyFaceTargetOneTurns(int faceTarget, bool expected) {
+    [TestCase(3, true)]
+    [TestCase(10, false)]
+    public void FaceTargetOneAndThreeTurn(int faceTarget, bool expected) {
         Assert.That(AiStandbyFace.FacesTarget(faceTarget), Is.EqualTo(expected));
     }
 

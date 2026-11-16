@@ -57,6 +57,7 @@ public class AutoTargetFaceTests {
     [TestCase(0, false, true, false, false)]
     [TestCase(0, true, false, false, false)]
     [TestCase(2, true, true, true, false)]
+    [TestCase(3, false, false, true, true)]
     public void RotationDisabledStopsOnlyTheMotionTurn(int faceTarget, bool motion, bool autoTargeting, bool disabled, bool expected) {
         Assert.That(AutoTargetFace.CastTurns(faceTarget, motion, autoTargeting, disabled), Is.EqualTo(expected));
     }
