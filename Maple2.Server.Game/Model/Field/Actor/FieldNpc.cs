@@ -855,7 +855,9 @@ public class FieldNpc : Actor<Npc> {
 
     public virtual void Animate(string sequenceName, float duration = -1f) {
         if (!Value.Animations.TryGetValue(sequenceName, out AnimationSequenceMetadata? sequence)) {
-            Logger.Error("Invalid sequence: {Sequence} for npc {NpcId}", sequenceName, Value.Metadata.Id);
+            // A script that names a sequence the npc's rig lacks (52000119_qd plays "Talk" on Ralph 11003187, whose rig
+            // has Talk_A) is a data slip: nothing is played, as for any unknown name, and it is no server error.
+            Logger.Debug("Invalid sequence: {Sequence} for npc {NpcId}", sequenceName, Value.Metadata.Id);
             return;
         }
 
@@ -868,7 +870,7 @@ public class FieldNpc : Actor<Npc> {
         string[] names = TriggerSequenceList.Playable(TriggerSequenceList.Split(sequenceNames),
             name => Value.Animations.TryGetValue(name, out AnimationSequenceMetadata? sequence) ? sequence.Name : null, missing);
         if (missing.Count > 0) {
-            Logger.Error("Invalid sequence: {Sequence} for npc {NpcId}", string.Join(",", missing), Value.Metadata.Id);
+            Logger.Debug("Invalid sequence: {Sequence} for npc {NpcId}", string.Join(",", missing), Value.Metadata.Id);
         }
         if (names.Length == 0) {
             return;
