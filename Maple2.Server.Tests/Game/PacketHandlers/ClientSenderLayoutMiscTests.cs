@@ -133,4 +133,98 @@ public class ClientSenderLayoutMiscTests {
         ReadsAll(handler, w => w.WriteByte(7));
         ReadsAll(handler, w => { w.WriteByte(8); w.WriteShort(0); });
     }
+
+    // uiitemmergeoptiondialog.cpp:974-1020 and uiitemmergerevertdialog.cpp:155: 0 (info), 1 uid, 2 and 3 and 7 two uids,
+    // 4 the choice byte, 6 two uids (the revert item first).
+    [Test]
+    public void ItemMerge_Modes0_to_7() {
+        var handler = new ItemMergeHandler();
+        ReadsAll(handler, w => w.WriteByte(0));
+        ReadsAll(handler, w => { w.WriteByte(1); w.WriteLong(1); });
+        foreach (byte mode in new byte[] { 2, 3, 6, 7 }) {
+            byte sent = mode;
+            ReadsAll(handler, w => { w.WriteByte(sent); w.WriteLong(1); w.WriteLong(2); });
+        }
+        ReadsAll(handler, w => { w.WriteByte(4); w.WriteByte(1); });
+    }
+
+    // uiitemrepackingscrolldialog.cpp:287: mode 1, the scroll uid, the target uid.
+    [Test]
+    public void ItemRepack_Mode1() {
+        ReadsAll(new ItemRepackHandler(), w => { w.WriteByte(1); w.WriteLong(1); w.WriteLong(2); });
+    }
+
+    // dropitem.cpp:940: the object id, the picker flag, the picker id sent only with the flag.
+    [Test]
+    public void ItemPickup_ObjectAndPicker() {
+        ReadsAll(new ItemPickupHandler(), w => { w.WriteInt(1); w.WriteBool(false); });
+        ReadsAll(new ItemPickupHandler(), w => { w.WriteInt(1); w.WriteBool(true); w.WriteInt(2); });
+    }
+
+    // uiitemextractionscrolldialog.cpp:282: the scroll uid, the target uid.
+    [Test]
+    public void ItemExtraction_ScrollAndTarget() {
+        ReadsAll(new ItemExtractionHandler { TableMetadata = test.TableMetadata }, w => { w.WriteLong(1); w.WriteLong(2); });
+    }
+
+    // itemlockmanager.cpp:36 (0), 209 (1: mode byte, uid), 221 and 261 (2: uid), 171 (3: mode byte).
+    [Test]
+    public void ItemLock_Modes0_to_3() {
+        var handler = new ItemLockHandler { ServerTableMetadata = test.ServerTableMetadata };
+        ReadsAll(handler, w => w.WriteByte(0));
+        ReadsAll(handler, w => { w.WriteByte(1); w.WriteByte(0); w.WriteLong(1); });
+        ReadsAll(handler, w => { w.WriteByte(2); w.WriteLong(1); });
+        ReadsAll(handler, w => { w.WriteByte(3); w.WriteByte(0); });
+    }
+
+    // invenslot.cpp:1145 (3: uid, short slot), networkservice.cpp:514 (4: uid, int amount) and 516 (5: uid),
+    // uiinventorydialog.cpp:1600 (8: tab byte, stack flag), inventory.cpp:1303 (9: tab byte).
+    [Test]
+    public void ItemInventory_Modes3_4_5_8_9() {
+        var handler = new ItemInventoryHandler();
+        ReadsAll(handler, w => { w.WriteByte(3); w.WriteLong(1); w.WriteShort(1); });
+        ReadsAll(handler, w => { w.WriteByte(4); w.WriteLong(1); w.WriteInt(1); });
+        ReadsAll(handler, w => { w.WriteByte(5); w.WriteLong(1); });
+        ReadsAll(handler, w => { w.WriteByte(8); w.WriteByte(0); w.WriteBool(false); });
+        ReadsAll(handler, w => { w.WriteByte(9); w.WriteByte(0); });
+    }
+
+    // uiitemsocketscrolldialog.cpp:524 (payload 0x14062a040): mode 1, the target uid, then the scroll uid.
+    [Test]
+    public void ItemSocketScroll_Mode1() {
+        ReadsAll(new ItemSocketScrollHandler { TableMetadata = test.TableMetadata }, w => { w.WriteByte(1); w.WriteLong(1); w.WriteLong(2); });
+    }
+
+    // itemexchangeslot.cpp:95 (0: scroll uid, item uid), uiitemexchangescrolldialog.cpp:594 (1: scroll, target, count;
+    // payload 0x140202470), 894 and 911 (3: scroll, target, count; payload 0x140202580, GM only).
+    [Test]
+    public void ItemExchangeScroll_Modes0_1() {
+        var handler = new ItemExchangeScroll { ItemMetadata = test.ItemMetadata, TableMetadata = test.TableMetadata };
+        ReadsAll(handler, w => { w.WriteByte(0); w.WriteLong(1); w.WriteLong(2); });
+        ReadsAll(handler, w => { w.WriteByte(1); w.WriteLong(1); w.WriteLong(2); w.WriteInt(1); });
+    }
+
+    // enchantscrollslot.cpp:105 (1) and uienchantscrolldialog.cpp:167 (2): the scroll uid, the item uid;
+    // uimasterydialog.cpp:594 (4): the recipe id. The notice packets of unit_1407a4f20 name this opcode but nothing
+    // constructs them.
+    [Test]
+    public void EnchantScroll_Modes1_2_4() {
+        var handler = new EnchantScrollHandler();
+        ReadsAll(handler, w => { w.WriteByte(1); w.WriteLong(1); w.WriteLong(2); });
+        ReadsAll(handler, w => { w.WriteByte(2); w.WriteLong(1); w.WriteLong(2); });
+        ReadsAll(handler, w => { w.WriteByte(4); w.WriteInt(1); });
+    }
+
+    // uiitemenchantdialog.cpp: 0 (468), 1 type byte and uid (735, 1162), 2 uid and flag byte (849, 1397), 3 int (813,
+    // 822), 4 uid and the other uid (1749), 6 uid (713), uicommon.cpp:1998 9 uid. Modes 4 and 6 are read only with the Ophelia or Peachy dialog staged and
+    // 13 to 19 are GM only: those were compared by reading, not run.
+    [Test]
+    public void ItemEnchant_Modes0_1_2_3_4_6_9() {
+        var handler = new ItemEnchantHandler();
+        ReadsAll(handler, w => w.WriteByte(0));
+        ReadsAll(handler, w => { w.WriteByte(1); w.WriteByte(1); w.WriteLong(1); });
+        ReadsAll(handler, w => { w.WriteByte(2); w.WriteLong(1); w.WriteByte(1); });
+        ReadsAll(handler, w => { w.WriteByte(3); w.WriteInt(1); });
+        ReadsAll(handler, w => { w.WriteByte(9); w.WriteLong(1); });
+    }
 }
