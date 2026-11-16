@@ -292,4 +292,54 @@ public class MapleSurvivalPassTests {
             Environment.SetEnvironmentVariable("MS2_SURVIVAL_CLIENT", before);
         }
     }
+
+    // KR paid pass set 1 (survivalPassReward_paid.xml, NA rows): level 1 is the additionalEffect 70000187 at level 1,
+    // level 3 the genderItem 11500248 (male) / 11500249 (female). A paid claim to level 3 with the pass gives the
+    // female character the second item and starts the buff after the store; a reward type the server does not give
+    // (here "title") is logged and the level is still claimed.
+    [Test]
+    public void ClaimPass_Paid_BuffAndGenderItem() {
+        const int buffId = 70000187;
+        var table = new MapleSurvivalTable(
+            new Dictionary<int, MapleSurvivalTable.Period> { [1] = new(1, 1, new DateTime(2018, 8, 22), new DateTime(2099, 1, 1), PassPrice) },
+            new Dictionary<int, long> { [1] = 0, [2] = 2400, [3] = 4320 },
+            new Dictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>>(),
+            new Dictionary<int, IReadOnlyDictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>>>(),
+            new Dictionary<int, IReadOnlyDictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>>> {
+                [1] = new Dictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>> {
+                    [1] = [new MapleSurvivalTable.Reward("additionalEffect", [buffId], [], [1])],
+                    [2] = [new MapleSurvivalTable.Reward("title", [1], [], [1])],
+                    [3] = [new MapleSurvivalTable.Reward("genderItem", [11500248, 11500249], [1, 1], [1, 1])],
+                },
+            });
+        test = new TestGameSession(gender: Gender.Female);
+        test.SetTable(table);
+        test.Register(TestGameSession.Metadata(11500248), TestGameSession.Metadata(11500249));
+        GameSession session = test.Start();
+        test.EnterMap(TestGameSession.Map(2000001));
+        const System.Reflection.BindingFlags any = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic;
+        var skills = new Maple2.Database.Storage.SkillMetadataStorage(new Maple2.Database.Context.MetadataContext(
+            new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
+        object cache = typeof(Maple2.Database.Storage.SkillMetadataStorage).GetField("EffectCache", any)!.GetValue(skills)!;
+        AdditionalEffectMetadata effect = BuffAttributeTests.Effect(buffId, DisabledBuffTests.Property with { DurationTick = 10000 });
+        cache.GetType().GetMethod("AddReplace")!.Invoke(cache, [(effect.Id, effect.Level), effect]);
+        var field = session.Field!;
+        typeof(Maple2.Server.Game.Manager.Field.FieldManager).GetField("<SkillMetadata>k__BackingField", any)!.SetValue(field, skills);
+        typeof(Maple2.Server.Game.Manager.Field.FieldManager).GetField(nameof(field.FieldActor), any)!
+            .SetValue(field, new Maple2.Server.Game.Model.FieldActor(field, 99, field.Metadata, null!));
+        typeof(Maple2.Server.Game.Model.Actor<Player>).GetField("<Field>k__BackingField", any)!.SetValue(session.Player, field);
+        session.Player.Value.Account.SurvivalLevel = 3;
+        session.Player.Value.Account.ActiveGoldPass = true;
+        test.TakeSent();
+
+        MapleSurvivalProgress.ClaimPass(session, 0, 3);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Player.Value.Account.SurvivalGoldLevelRewardClaimed, Is.EqualTo(3));
+            Assert.That(Amount(session, 11500249), Is.EqualTo(1));
+            Assert.That(Amount(session, 11500248), Is.EqualTo(0));
+            Assert.That(session.Player.Buffs.EnumerateBuffs(buffId).Count(), Is.EqualTo(1));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
 }

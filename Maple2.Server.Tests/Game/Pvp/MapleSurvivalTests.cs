@@ -541,4 +541,46 @@ public class MapleSurvivalTests {
         }));
         Assert.That(test.TakeSent(), Is.Empty);
     }
+
+    // A World refusal: a queue the World refuses (in a match: Busy) goes back to state 0 after its state 1; a still
+    // waiting register (Queued) stays at state 1; an accept with no match made (NoMatch) is state 0 and moves nobody.
+    // A squad register with no party is refused with no line (Party 0x37 false) and nothing reaches the World.
+    [Test]
+    public void WorldRefusals() {
+        var test = new TestGameSession();
+        GameSession session = test.Start();
+        test.World.PvpResponses[PvpRequest.PvpOneofCase.ArenaRegister] = new PvpResponse { Error = (int) RankDuelError.Busy };
+        Assert.That(Send(test, session, "00"), Is.EqualTo(new[] { Hex(MapleSurvivalPacket.Matching()), Hex(MapleSurvivalPacket.Idle()) }));
+        test.World.PvpResponses[PvpRequest.PvpOneofCase.ArenaRegister] = new PvpResponse { Error = (int) RankDuelError.Queued };
+        Assert.That(Send(test, session, "00"), Is.EqualTo(new[] { Hex(MapleSurvivalPacket.Matching()) }));
+        test.World.PvpResponses[PvpRequest.PvpOneofCase.ArenaJoin] = new PvpResponse { Error = (int) RankDuelError.NoMatch };
+        Assert.That(Send(test, session, "01"), Is.EqualTo(new[] { Hex(MapleSurvivalPacket.Idle()) }));
+        Assert.That(test.World.Moves, Is.Empty);
+        int requests = test.World.PvpRequests.Count;
+        session.Party = new Maple2.Server.Game.Manager.PartyManager(test.World, session);
+        Assert.That(Send(test, session, "04"), Is.EqualTo(new[] { Hex(PartyPacket.SurvivalPartySearch(false, false)) }));
+        Assert.That(test.World.PvpRequests, Has.Count.EqualTo(requests));
+    }
+
+    // The survival lobby's entry (SendState, after the game server entry): the World's queue state 1 is Survival 0x00
+    // (queued), 2 with no arena field yet is Matched (0x02) for the ranking character, anything else is 0x01 (idle).
+    [TestCase(1, "matching")]
+    [TestCase(2, "matched")]
+    [TestCase(0, "idle")]
+    public void SendState_FollowsTheWorldsQueue(int state, string expected) {
+        var test = new TestGameSession();
+        GameSession session = test.Start();
+        test.SetTable(Table());
+        test.World.PvpResponses[PvpRequest.PvpOneofCase.QueueState] = new PvpResponse { Arena = MapleSurvivalRules.Arena, QueueState = state };
+        test.TakeSent();
+
+        MapleSurvivalHandler.SendState(session);
+
+        string packet = expected switch {
+            "matching" => Hex(MapleSurvivalPacket.Matching()),
+            "matched" => Hex(MapleSurvivalPacket.Matched(MapleSurvivalProgress.RankingCharacter(session), false)),
+            _ => Hex(MapleSurvivalPacket.Idle()),
+        };
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { packet }));
+    }
 }
