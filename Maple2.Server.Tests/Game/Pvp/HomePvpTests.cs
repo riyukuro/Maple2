@@ -328,4 +328,55 @@ public class HomePvpTests {
         match.Update(home.Field.FieldTick + HomePvpState.CountdownMs + 1);
         Assert.That(home.Field.PvpZone, Is.Null);
     }
+
+    // The rows a match stops for everyone: the PvP row always, the potion and revive rows when the match allows none (setting 0).
+    [Test]
+    public void Rows_ArePvpAndTheForbiddenOnes() {
+        Assert.That(HomePvpField.Rows(new HomePvpSettings(0, 0, 1, 1, 0, 0)), Is.EqualTo(new[] { HomePermission.Pvp }));
+        Assert.That(HomePvpField.Rows(new HomePvpSettings(0, 0, 0, 0, 0, 0)),
+            Is.EqualTo(new[] { HomePermission.Pvp, HomePermission.Potion, HomePermission.Revival }));
+    }
+
+    // The owner's console during the countdown calls the match off; a second stop has nothing to end.
+    [Test]
+    public void Stop_DuringTheCountdownCallsTheMatchOff() {
+        Home home = InAHome();
+        Dialog(home.Owner, 1, HomePvpSettings.Default);
+        var match = (HomePvpField) home.Field.PvpZone!;
+        Assert.That(match.Stop(), Is.True);
+        Assert.That(match.Ended, Is.True);
+        Assert.That(match.Stop(), Is.False);
+        Assert.That(HomeRowCheck.Blocks(home.Owner.Session, HomePermission.Pvp), Is.False);
+    }
+
+    // A kill's notice, a newcomer's catch-up (the others' points and the rows), a participant leaving.
+    [Test]
+    public void TheFight_KillNoticeNewcomerAndLeave() {
+        Home home = InAHome();
+        Dialog(home.Owner, 1, HomePvpSettings.Default);
+        var match = (HomePvpField) home.Field.PvpZone!;
+        FieldPlayer owner = home.Owner.Session.Player;
+        FieldPlayer visitor = home.Visitor.Session.Player;
+        // Before the fight a newcomer gets nothing.
+        home.Visitor.TakeSent();
+        match.Enter(visitor);
+        Assert.That(home.Visitor.TakeSent(), Is.Empty);
+
+        match.Update(home.Field.FieldTick + HomePvpState.CountdownMs);
+        home.Owner.TakeSent();
+        home.Visitor.TakeSent();
+        match.Damage(owner, visitor, 10);
+        match.Death(visitor);
+        Assert.That(home.Owner.TakeSentOps(), Does.Contain(SendOp.PlayerKillNotice));
+        // A death of one not in the match does nothing.
+        match.Leave(visitor);
+        home.Owner.TakeSent();
+        match.Death(visitor);
+        Assert.That(home.Owner.TakeSentOps(), Does.Not.Contain(SendOp.PlayerKillNotice));
+
+        home.Owner.TakeSent();
+        match.Enter(owner);
+        List<SendOp> ops = home.Owner.TakeSentOps();
+        Assert.That(ops, Does.Contain(SendOp.ResponseCube));
+    }
 }

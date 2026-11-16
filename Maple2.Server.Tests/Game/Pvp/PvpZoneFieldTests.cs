@@ -508,4 +508,31 @@ public class PvpZoneFieldTests {
         Assert.That(sent.Count(packet => packet.StartsWith("B60070")), Is.EqualTo(3));
         Assert.That(sent.Count(packet => packet.StartsWith("B60071")), Is.EqualTo(1));
     }
+
+    // IsParticipant: no one before the fight starts; every player in the zone once it has. An arrival before the start
+    // gets nothing; a participant that left and comes back is here again, the others see its point (101 up, mode 2)
+    // again and it sees every point and row.
+    [Test]
+    public void FreeForAll_ParticipantsArrivalsAndReturns() {
+        Arena arena = Start();
+        long now = Environment.TickCount64;
+        Assert.That(arena.Field.PvpZone!.IsParticipant(arena.Player(0)), Is.False);
+        foreach (TestGameSession test in arena.Tests) {
+            test.TakeSent();
+        }
+        arena.Field.PvpZone.Enter(arena.Player(0));
+        Assert.That(Pvp(arena.Tests[0]), Is.Empty);
+
+        arena.Field.PvpZone.Update(now + 10);
+        Assert.That(arena.Field.PvpZone.IsParticipant(arena.Player(0)), Is.True);
+        arena.Field.PvpZone.Leave(arena.Player(0));
+        foreach (TestGameSession test in arena.Tests) {
+            test.TakeSent();
+        }
+        arena.Field.PvpZone.Enter(arena.Player(0));
+        Assert.That(Pvp(arena.Tests[1]), Does.Contain("B600" + "64" + Int(arena.Player(0).ObjectId) + "65000000" + "00" + "02"));
+        List<string> own = Pvp(arena.Tests[0]);
+        Assert.That(own.Count(packet => packet.StartsWith("B60064")), Is.EqualTo(3));
+        Assert.That(own.Count(packet => packet.StartsWith("B60067")), Is.EqualTo(3));
+    }
 }
