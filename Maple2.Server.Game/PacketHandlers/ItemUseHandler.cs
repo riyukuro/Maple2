@@ -943,8 +943,21 @@ public class ItemUseHandler : FieldPacketHandler {
         for (int i = currentLevel; i < level; i++) {
             session.ConditionUpdate(ConditionType.level, targetLong: i);
         }
-        // A potion past the jumping target or to the end level does what a level up does there.
-        session.GameEvent.BurningLevelupReach(currentLevel, level);
+        // A potion past the jumping target or to the end level does what a level up does there. Its flags are stored
+        // with the level, the potion taken and the quests in one save (below): stored on their own at once, a crash
+        // before the session save kept them with the old level and the potion back.
+        session.GameEvent.BurningLevelupReach(currentLevel, level, store: false);
+        if (!session.TrySavePurchase(db => {
+                if (!db.SavePlayer(session.Player)) {
+                    return false;
+                }
+                session.Item.Inventory.Save(db);
+                session.Quest.Save(db);
+                session.GameEvent.Save(db);
+                return true;
+            })) {
+            Serilog.Log.Error("Level potion {ItemUid} of {CharacterId}: the level and its flags not stored at once", item.Uid, session.CharacterId);
+        }
 
         session.PlayerInfo.SendUpdate(new PlayerUpdateRequest {
             AccountId = session.AccountId,

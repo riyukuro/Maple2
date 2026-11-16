@@ -730,7 +730,8 @@ public sealed class GameEventManager {
     // 2004 is set and stored (the client shows its jumpingComplete box on the same change, and the character list
     // offers no other pick). At or past the end level the picked character has completed the event: 2001 is set and
     // stored, the event's effect goes, and the reward widget can be claimed (EventReward 0x0f).
-    public void BurningLevelupReach(int oldLevel, int level) {
+    // store false: the caller stores the values with the level in a save of its own (the level potion).
+    public void BurningLevelupReach(int oldLevel, int level, bool store = true) {
         if (BurningLevelupEvent() is not { Metadata.Data: BurningLevelup data } gameEvent) {
             return;
         }
@@ -738,7 +739,7 @@ public sealed class GameEventManager {
             && !BurningLevelupRules.IsSet(Peek(GameEventUserValueType.BurningLevelupJumpingDone, gameEvent.Id))) {
             Get(GameEventUserValueType.BurningLevelupJumpingDone, gameEvent.Id, gameEvent.EndTime);
             Set(gameEvent.Id, GameEventUserValueType.BurningLevelupJumpingDone, 1);
-            if (!Store(gameEvent.Id, GameEventUserValueType.BurningLevelupJumpingDone)) {
+            if (store && !Store(gameEvent.Id, GameEventUserValueType.BurningLevelupJumpingDone)) {
                 logger.Error("Failed to store the burning levelup jumping. Event ID: {EventId}", gameEvent.Id);
             }
         }
@@ -747,7 +748,7 @@ public sealed class GameEventManager {
         }
         Get(GameEventUserValueType.BurningLevelupReached, gameEvent.Id, gameEvent.EndTime);
         Set(gameEvent.Id, GameEventUserValueType.BurningLevelupReached, 1);
-        if (!Store(gameEvent.Id, GameEventUserValueType.BurningLevelupReached)) {
+        if (store && !Store(gameEvent.Id, GameEventUserValueType.BurningLevelupReached)) {
             logger.Error("Failed to store the burning levelup reach. Event ID: {EventId}", gameEvent.Id);
         }
         if (data.AdditionalEffectId > 0) {

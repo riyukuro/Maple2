@@ -639,6 +639,13 @@ public class BurningLevelupTests {
         Assert.That(Value(session, GameEventUserValueType.BurningLevelupJumpingDone), Is.EqualTo("1"));
         Assert.That(StoredValue(GameEventUserValueType.BurningLevelupJumpingDone), Is.EqualTo("1"));
         Assert.That(test.Errors, Is.Empty);
+        // Stored with the flag in one save, with no session save: the level and the potion taken (a crash keeps
+        // neither the flag on the old level nor the potion).
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        Assert.Multiple(() => {
+            Assert.That(context.Character.Single(row => row.Id == test.CharacterId).Level, Is.EqualTo(30));
+            Assert.That(context.Item.Any(row => row.Id == potion.Uid && row.OwnerId == test.CharacterId), Is.False);
+        });
     }
 
     [Test]
