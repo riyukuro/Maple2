@@ -25,9 +25,13 @@ public class PartyServiceTests {
     private sealed class FakeChannel : ChannelClient {
         public readonly List<ChannelPartyRequest> Requests = [];
         public int InviteAnswer;
+        public bool Throw;
 
         public override ChannelPartyResponse Party(ChannelPartyRequest request, CallOptions options) {
             Requests.Add(request.Clone());
+            if (Throw) {
+                throw new RpcException(new Status(StatusCode.Unavailable, "channel down"));
+            }
             return new ChannelPartyResponse { Error = request.Invite != null ? InviteAnswer : 0 };
         }
     }
@@ -187,5 +191,24 @@ public class PartyServiceTests {
         Assert.That(lookup.TryGet(partyId, out PartyManager? manager), Is.True);
         Assert.That((manager!.Party.LeaderCharacterId, manager.Party.LeaderName), Is.EqualTo((Guest, "Guest")));
         Assert.That(channel.Requests.Single().UpdateLeader.CharacterId, Is.EqualTo(Guest));
+    }
+
+    // An invite the invitee's channel refused or that did not reach it cannot be accepted: the invitee never saw it.
+    // Before, the World kept it for 30 seconds either way, so a hand-made accept joined the party.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void UndeliveredInvite_CannotBeAccepted(bool channelDown) {
+        int partyId = Create();
+        if (channelDown) {
+            channel.Throw = true;
+        } else {
+            channel.InviteAnswer = (int) PartyError.s_party_err_already;
+        }
+
+        Assert.That(Invite(partyId, Leader, Guest).Error, Is.Not.Zero);
+        channel.Throw = false;
+
+        Assert.That(Respond(partyId, Guest, PartyInviteResponse.Accept).Error, Is.EqualTo((int) PartyError.s_party_err_cannot_invite));
+        Assert.That(lookup.TryGet(partyId, out PartyManager? manager) && manager!.Party.Members.ContainsKey(Guest), Is.False);
     }
 }

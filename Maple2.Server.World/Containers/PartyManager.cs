@@ -177,8 +177,12 @@ public class PartyManager : IDisposable {
             return PartyError.s_party_err_cannot_invite;
         }
 
+        // The invite is kept only once the invitee's channel took it: an invite that did not reach the invitee (a
+        // failed call, or the channel's refusal) could not be shown there, so it cannot be accepted either. Kept
+        // before the call, as the invitee may answer before it returns; dropped when it fails.
+        (string, DateTime) invite = (requestor.Name, DateTime.Now.AddSeconds(30));
+        pendingInvites[player.CharacterId] = invite;
         try {
-            pendingInvites[player.CharacterId] = (requestor.Name, DateTime.Now.AddSeconds(30));
             var request = new PartyRequest {
                 PartyId = Party.Id,
                 ReceiverIds = {
@@ -191,8 +195,13 @@ public class PartyManager : IDisposable {
             };
 
             PartyResponse response = client.Party(request);
-            return (PartyError) response.Error;
+            var error = (PartyError) response.Error;
+            if (error != PartyError.none) {
+                DropInvite(player.CharacterId, invite);
+            }
+            return error;
         } catch (RpcException) {
+            DropInvite(player.CharacterId, invite);
             return PartyError.s_party_err_not_found;
         }
     }
@@ -337,6 +346,11 @@ public class PartyManager : IDisposable {
             FindNewLeader(requestorId);
         }
     });
+
+    // Drops this invite only: a newer invite to the same player, sent meanwhile, stays.
+    private void DropInvite(long characterId, (string, DateTime) invite) {
+        pendingInvites.TryRemove(new KeyValuePair<long, (string, DateTime)>(characterId, invite));
+    }
 
     public string ConsumeInvite(long characterId) {
         foreach ((long id, (string name, DateTime expiryTime)) in pendingInvites) {
