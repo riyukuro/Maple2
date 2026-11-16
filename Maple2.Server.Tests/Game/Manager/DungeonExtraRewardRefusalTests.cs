@@ -82,4 +82,26 @@ public class DungeonExtraRewardRefusalTests {
             Assert.That(Ops().Count(op => op == SendOp.RoomDungeon), Is.EqualTo(2));
         });
     }
+
+    // The tickets are stored taken at once: the clear that uses the count stores the record, not the bag, so tickets
+    // taken in memory only came back on a crash with the extra reward paid. Before, the stored row still held both.
+    [Test]
+    public void TheTicketsAreStoredTaken() {
+        test = new TestGameSession();
+        DungeonRoomMetadata room = TestGameSession.DungeonRoom(Room, 50000016) with { ExtraRewardTicket = Ticket(3) };
+        test.SetTable(new DungeonRoomTable(new Dictionary<int, DungeonRoomMetadata> { [Room] = room }));
+        ItemMetadata metadata = TestGameSession.Metadata(20000123, slotMax: 99);
+        test.Store(metadata with { Property = metadata.Property with { Tag = ItemTag.FreeChannelChatCoupon } }, amount: 2);
+        test.Start();
+
+        Buy(Room);
+
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        long characterId = test.CharacterId;
+        Assert.Multiple(() => {
+            Assert.That(test.Session.Dungeon.Records[Room].ExtraSubClears, Is.EqualTo(1));
+            Assert.That(context.Item.Where(item => item.OwnerId == characterId && item.ItemId == 20000123).Sum(item => item.Amount),
+                Is.EqualTo(1));
+        });
+    }
 }

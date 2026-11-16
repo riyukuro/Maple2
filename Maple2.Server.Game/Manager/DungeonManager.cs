@@ -1291,7 +1291,11 @@ public class DungeonManager {
         }
 
         int cost = DungeonRoomRules.ExtraTicketCost(ticket!, bonus);
-        if (!session.Item.Inventory.Consume([new IngredientInfo(ticket!.TicketTag, cost)])) {
+        // The tickets are stored taken at once (ConsumeNow): the clear that uses the count stores it with the records
+        // (SaveDungeonRecords), not the bag, so tickets taken in memory came back on a crash before the session save
+        // with the extra reward paid. A crash between this store and the record's leaves the tickets taken and the
+        // count not bought: short, never twice.
+        if (!session.Item.Inventory.ConsumeNow(session.Item.Inventory.PlanConsume([new IngredientInfo(ticket!.TicketTag, cost)]))) {
             session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_dungeonRoom_lack_extra_ticket, rewardId));
             return false;
         }
