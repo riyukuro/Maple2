@@ -188,6 +188,61 @@ public class SurvivalSkinTests {
         Assert.That(session.Survival.Find(MedalType.Riding, RidingId), Is.Not.Null);
     }
 
+    private static void EquipSkin(GameSession session, byte slot, int skin) =>
+        new MapleSurvivalHandler().Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(8);
+            writer.WriteByte(slot);
+            writer.WriteInt(skin);
+        }));
+
+    // The skin window's put on and take off (UIMapleSurvivalSkinDialog, CMapleSurvivalManager::EquipSkin: MapleSurvival
+    // 8, the slot byte and the skin, 0 to take it off). The worn skin is answered with the slot list (0x1e) and the
+    // slot's skin (0x20); a skin not held, one past the client's three slots, or one already worn gets no answer.
+    [Test]
+    public void EquipSkin_PutOnAndTakeOff() {
+        GameSession session = Start();
+        session.Survival.AddMedal(Medal(20910009, $"<v id=\"{RidingId}\" type=\"riding\" durationSec=\"10080\"/>"));
+        test.TakeSent();
+
+        EquipSkin(session, 1, RidingId);
+        List<byte[]> sent = test.TakeSent();
+        Assert.That(sent.Select(Convert.ToHexString), Has.Some.EqualTo(Convert.ToHexString(MapleSurvivalPacket.SkinEquipped(1, RidingId).ToArray())));
+        Assert.That(session.Survival.Find(MedalType.Riding, RidingId)?.Slot, Is.EqualTo((short) MedalType.Riding));
+
+        EquipSkin(session, 1, RidingId);
+        Assert.That(test.TakeSent(), Is.Empty);
+
+        EquipSkin(session, 1, 0);
+        sent = test.TakeSent();
+        Assert.That(sent.Select(Convert.ToHexString), Has.Some.EqualTo(Convert.ToHexString(MapleSurvivalPacket.SkinEquipped(1, 0).ToArray())));
+        Assert.That(session.Survival.Find(MedalType.Riding, RidingId)?.Slot, Is.EqualTo(-1));
+    }
+
+    [TestCase((byte) 0, RidingId)] // a riding skin in the tail slot: not held there
+    [TestCase((byte) 1, 20910002)] // not held
+    [TestCase((byte) 3, RidingId)] // past the client's slots
+    public void EquipSkin_NotHeldInTheSlot_NoAnswer(byte slot, int skin) {
+        GameSession session = Start();
+        session.Survival.AddMedal(Medal(20910009, $"<v id=\"{RidingId}\" type=\"riding\" durationSec=\"10080\"/>"));
+        test.TakeSent();
+
+        EquipSkin(session, slot, skin);
+
+        Assert.That(test.TakeSent(), Is.Empty);
+        Assert.That(session.Survival.Find(MedalType.Riding, RidingId)?.Slot, Is.EqualTo(-1));
+    }
+
+    // A medal item given to the bag (a reward, a mail) is learned as the skin and is not put in the bag.
+    [Test]
+    public void InventoryAdd_Medal_LearnedNotKept() {
+        GameSession session = Start();
+
+        Assert.That(session.Item.Inventory.Add(Medal(20910009, $"<v id=\"{RidingId}\" type=\"riding\" durationSec=\"10080\"/>")), Is.True);
+
+        Assert.That(session.Survival.Find(MedalType.Riding, RidingId), Is.Not.Null);
+        Assert.That(session.Item.Inventory.Find(20910009), Is.Empty);
+    }
+
     private void Use(GameSession session) {
         var handler = new ItemUseHandler { GameStorage = test.Storage, TableMetadata = test.TableMetadata, BanWordStorage = null! };
         handler.Handle(session, TestGameSession.Packet(writer => {

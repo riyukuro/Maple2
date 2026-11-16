@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -233,5 +233,40 @@ public class MaidCraftJackpotTests {
             Assert.That(MaidRules.JackpotChance(recipe, rates, 5), Is.EqualTo(1));
             Assert.That(MaidRules.JackpotChance(recipe with { Jackpot = null }, rates, 6), Is.EqualTo(0));
         });
+    }
+
+    // Cancel (mode 10, the dialog's onRecieveOrCancel while the craft runs, after message 0x7b7 is confirmed): the craft
+    // record goes (Remove) and the answer is result 4, which the dialog takes as cancelled (OnCancelResult redraws the
+    // progress); no product is given. A maid without a craft gets no answer.
+    [Test]
+    public void Cancel_RunningCraft_EndsItWithoutTheProduct() {
+        Login();
+        Place(DateTime.UtcNow.ToEpochSeconds() - 10, 300);
+
+        List<byte[]> sent = Send(10, 0.5);
+
+        Assert.Multiple(() => {
+            Assert.That(sent.Select(Convert.ToHexString), Is.EqualTo(new[] {
+                Hex(MaidCraftItemPacket.Remove(MaidUid)),
+                Hex(MaidCraftItemPacket.CancelResult(MaidRules.CraftCancelled)),
+            }));
+            Assert.That(Stored(), Is.EqualTo((0, 0L, 0)));
+            Assert.That(Held(Product), Is.EqualTo(0));
+        });
+        Assert.That(Send(10, 0.5), Is.Empty);
+    }
+
+    // A receive (mode 6) before the craft's ready time is answered CraftNotReady and keeps the craft.
+    [Test]
+    public void Receive_BeforeReady_KeepsTheCraft() {
+        Login();
+        long start = DateTime.UtcNow.ToEpochSeconds() - 10;
+        Place(start, 300);
+
+        List<byte[]> sent = Send(6, 0.5);
+
+        Assert.That(sent.Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(MaidCraftItemPacket.ReceiveResult(MaidRules.CraftNotReady)) }));
+        Assert.That(Stored()?.RecipeId, Is.EqualTo(RecipeId));
+        Assert.That(Held(Product), Is.EqualTo(0));
     }
 }
