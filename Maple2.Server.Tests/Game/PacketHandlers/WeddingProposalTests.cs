@@ -107,6 +107,35 @@ public class WeddingProposalTests {
         Assert.That(Rings(target), Is.EqualTo(0));
     }
 
+    // 23100423: <condition type="wedding_propose_decline" value="1" /> and 23100422: <condition
+    // type="wedding_propose_declined" value="1" />: a declined proposal (answer 2) counts the decline for the target and
+    // the declined for the proposer; an answer box that timed out (6) counts neither.
+    [TestCase((short) 2, 1)]
+    [TestCase((short) 6, 0)]
+    public void Decline_23100423_23100422_CountsBoth(short answer, int counted) {
+        Quest Watch(TestGameSession test) => test.StartQuest(TestGameSession.QuestData(91000001) with {
+            Conditions = [
+                new ConditionMetadata(ConditionType.wedding_propose_decline, 1, null, null),
+                new ConditionMetadata(ConditionType.wedding_propose_declined, 1, null, null),
+            ],
+        });
+        Quest proposerQuest = Watch(proposer);
+        Quest targetQuest = Watch(target);
+        SendPropose();
+
+        handler.Handle(target.Session, TestGameSession.Packet(writer => {
+            writer.WriteByte(Reply);
+            writer.WriteShort(answer);
+            writer.WriteLong(proposer.CharacterId);
+        }));
+
+        Assert.Multiple(() => {
+            Assert.That(proposer.Session.Marriage.Marriage.Status, Is.EqualTo(MaritalStatus.Single));
+            Assert.That((targetQuest.Conditions[0].Counter, targetQuest.Conditions[1].Counter), Is.EqualTo((counted, 0)));
+            Assert.That((proposerQuest.Conditions[0].Counter, proposerQuest.Conditions[1].Counter), Is.EqualTo((0, counted)));
+        });
+    }
+
     // A proposer without a ring is told so (error 0x1f) and nothing is sent to the target.
     [Test]
     public void Propose_WithoutRing_IsRefused() {

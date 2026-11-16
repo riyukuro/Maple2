@@ -327,9 +327,16 @@ public class WeddingReservationEditTests(bool mysql) {
             Is.EqualTo(WeddingError.s_wedding_result_late_wedding_reserve_modify_time));
     }
 
-    // Only the hall changes: the kept time is the couple's own row, not a taken one.
+    // 23100425: <condition type="wedding_hall_change" value="1" />: a stored change counts for both of the couple.
+    private static Quest WatchHallChange(TestGameSession test) => test.StartQuest(TestGameSession.QuestData(91000001) with {
+        Conditions = [new ConditionMetadata(ConditionType.wedding_hall_change, 1, null, null)],
+    });
+
+    // Only the hall changes: the kept time is the couple's own row, not a taken one. A declined change counts nothing.
     [Test]
     public void Change_HallOnly_IsAsked_DeclineSendsNothing() {
+        Quest payerQuest = WatchHallChange(payer);
+        Quest confirmerQuest = WatchHallChange(confirmer);
         WeddingHall current = payer.Session.Marriage.WeddingHall;
         Assert.That(payer.Session.Marriage.ChangeReservationRequest(Reservation(current.CeremonyTime, hallId: 2)),
             Is.EqualTo(WeddingError.s_wedding_result_send_wedding_hall_reservation_change));
@@ -340,6 +347,7 @@ public class WeddingReservationEditTests(bool mysql) {
             Assert.That(Wedding(confirmer), Is.Empty);
             Assert.That(Wedding(payer), Is.Empty);
             Assert.That(payer.Session.Marriage.WeddingHall.PackageHallId, Is.EqualTo(1));
+            Assert.That((payerQuest.Conditions[0].Counter, confirmerQuest.Conditions[0].Counter), Is.EqualTo((0, 0)));
         });
     }
 
@@ -348,6 +356,8 @@ public class WeddingReservationEditTests(bool mysql) {
         if (!mysql) {
             Assert.Ignore("the change locks the hall's row: MySQL only");
         }
+        Quest payerQuest = WatchHallChange(payer);
+        Quest confirmerQuest = WatchHallChange(confirmer);
         WeddingHall current = payer.Session.Marriage.WeddingHall;
         Assume.That(payer.Session.Marriage.ChangeReservationRequest(Reservation(current.CeremonyTime, hallId: 2)),
             Is.EqualTo(WeddingError.s_wedding_result_send_wedding_hall_reservation_change));
@@ -358,6 +368,7 @@ public class WeddingReservationEditTests(bool mysql) {
             Assert.That(Wedding(payer).Select(packet => packet.Mode).ToArray(), Is.EqualTo(new byte[] { 0x16 }));
             Assert.That(Wedding(confirmer).Select(packet => packet.Mode).ToArray(), Is.EqualTo(new byte[] { 0x16 }));
             Assert.That(payer.Session.Marriage.WeddingHall.PackageHallId, Is.EqualTo(2));
+            Assert.That((payerQuest.Conditions[0].Counter, confirmerQuest.Conditions[0].Counter), Is.EqualTo((1, 1)));
         });
 
         // A second answer is not asked for.
