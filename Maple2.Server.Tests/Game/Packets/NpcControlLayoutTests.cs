@@ -12,6 +12,9 @@ using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.ActorStateComponent;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Util;
+using Maple2.Server.Tests.Game.Manager;
+using Maple2.Tools.DotRecast;
+using DotRecast.Core.Numerics;
 using NUnit.Framework;
 
 namespace Maple2.Server.Tests.Game.Packets;
@@ -140,6 +143,27 @@ public class NpcControlLayoutTests : NpcLayoutTestBase {
         });
     }
 
+    // A push off a ledge 100 down (within the client's 150) lands the npc on the lower floor; the hit entry goes out
+    // with the push time and the position it landed at, its height included.
+    [Test]
+    public void Hit_PushDownALedge_CarriesTheLowerFloor() {
+        FieldNpc npc = Spawn(boss: false, TriggerHallGameTests.MeshNavigation(AgentNavigationTests.LedgeParams(1f)),
+            DotRecastHelper.FromNavMeshSpace(new RcVec3f(-0.5f, 0, 5)));
+        var push = new SkillMetadataPush(Type: 1, EaseType: 1, ApplyField: 1, Distance: 200, UpDistance: 0, Down: 0, Fall: false,
+            Duration: 0.4f, Probability: 1, Priority: 0, PriorityHitImmune: 0);
+        Assert.That(npc.Navigation!.MoveStraight(DotRecastHelper.FromNavMeshSpace(new RcVec3f(1.5f, 0, 5)), NpcControlRules.PushDrop(push)), Is.True);
+        SetState(npc, ActorState.Hit, NpcControlRules.Hit(7, 0, push, true));
+        Entry entry = Read(NpcControlPacket.Control(npc), false)[0];
+        Vector3 landed = DotRecastHelper.FromNavMeshSpace(new RcVec3f(1.5f, -1, 5));
+        Assert.Multiple(() => {
+            Assert.That(landed.Z, Is.EqualTo(-100).Within(1));
+            Assert.That(entry.Position[0], Is.EqualTo(landed.X).Within(1));
+            Assert.That(entry.Position[1], Is.EqualTo(landed.Y).Within(1));
+            Assert.That(entry.Position[2], Is.EqualTo(landed.Z).Within(1));
+            Assert.That(entry.Tail.Take(8).ToArray(), Is.EqualTo(System.BitConverter.GetBytes(0f).Concat(System.BitConverter.GetBytes(0.4f)).ToArray()));
+        });
+    }
+
     // The hold after the hit entry went out: state 0 with sequence -1 and no hit fields.
     [Test]
     public void HitHold_StateZeroNoTail() {
@@ -233,9 +257,9 @@ public abstract class NpcLayoutTestBase : TriggerTestBase {
     private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
     protected const int NpcId = 21000001;
 
-    protected FieldNpc Spawn(bool boss) {
+    protected FieldNpc Spawn(bool boss, Navigation? navigation = null, Vector3? position = null) {
         Start();
-        typeof(FieldManager).GetField("<Navigation>k__BackingField", Any)!.SetValue(Field, TriggerHallGameTests.FlatNavigation());
+        typeof(FieldManager).GetField("<Navigation>k__BackingField", Any)!.SetValue(Field, navigation ?? TriggerHallGameTests.FlatNavigation());
         typeof(FieldManager).GetField("<Mobs>k__BackingField", Any)!.SetValue(Field, new ConcurrentDictionary<int, FieldNpc>());
         typeof(FieldManager).GetField("fieldBreakables", Any)!.SetValue(Field, new ConcurrentDictionary<string, FieldBreakable>());
         typeof(FieldManager).GetField("<FieldInstance>k__BackingField", Any)!.SetValue(Field,
@@ -247,7 +271,7 @@ public abstract class NpcLayoutTestBase : TriggerTestBase {
         metadata = metadata with { Basic = metadata.Basic with { Friendly = 0, Class = boss ? 3 : 1 } };
         typeof(FieldManager).GetField("<NpcMetadata>k__BackingField", Any)!.SetValue(Field, AiStateTests.NpcTable([], metadata));
         typeof(FieldManager).GetField("<AiMetadata>k__BackingField", Any)!.SetValue(Field, AiStateTests.AiTable());
-        FieldNpc npc = Field.SpawnNpc(metadata, new Vector3(1000, -200, 300), new Vector3(0, 0, 90), disableAi: true)!;
+        FieldNpc npc = Field.SpawnNpc(metadata, position ?? new Vector3(1000, -200, 300), new Vector3(0, 0, 90), disableAi: true)!;
         test.TakeSent();
         return npc;
     }
