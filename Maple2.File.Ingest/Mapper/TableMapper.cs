@@ -2428,7 +2428,24 @@ public class TableMapper : TypeMapper<TableMetadata> {
             }
             levelRewards[Int(row, "level")] = rewards;
         }
-        return new MapleSurvivalTable(periods, levelExp, levelRewards, Pass("survivalpassreward.xml"), Pass("survivalpassreward_paid.xml"));
+        // Pass rewards naming an item the played client has as another item are left out (SurvivalPassRewards).
+        Func<int, bool> reused = _ => false;
+        if (passOn && playedReader != null) {
+            Func<XmlElement, bool> available = node =>
+                FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale"));
+            Dictionary<int, string> played = SurvivalPassRewards.PlayedFunctions(playedReader.Files
+                .Where(file => PlayedClientItems.IsItemFile(file.Name)).Select(file => playedReader.GetXmlDocument(file)), available);
+            Dictionary<string, Maple2.File.IO.Crypto.Common.PackFileEntry> serverItems = xmlReader.Files
+                .Where(file => file.Name.StartsWith("item/", StringComparison.OrdinalIgnoreCase))
+                .ToDictionary(file => file.Name.ToLowerInvariant(), file => file);
+            string? Server(int id) => serverItems.TryGetValue(SurvivalPassRewards.ServerItemFile(id), out var entry)
+                ? SurvivalPassRewards.FunctionName(xmlReader.GetXmlDocument(entry).DocumentElement!, available) : null;
+            reused = id => SurvivalPassRewards.Reused(id, played, Server);
+        }
+        int droppedRewards = 0;
+        var table = new MapleSurvivalTable(periods, levelExp, levelRewards, Pass("survivalpassreward.xml"), Pass("survivalpassreward_paid.xml"));
+        Console.WriteLine($"maple survival: {droppedRewards} pass rewards left out (the played client has the item as another item)");
+        return table;
 
         IReadOnlyDictionary<int, IReadOnlyDictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>>> Pass(string file) {
             var results = new Dictionary<int, Dictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>>>();
@@ -2440,6 +2457,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
                         rewards.Add(new MapleSurvivalTable.Reward(type, Ints(row, $"id{i}"), Ints(row, $"value{i}"), Ints(row, $"count{i}")));
                     }
                 }
+                rewards = SurvivalPassRewards.Keep(rewards, reused, ref droppedRewards);
                 if (!results.TryGetValue(Int(row, "id"), out Dictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>>? levels)) {
                     results[Int(row, "id")] = levels = new Dictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>>();
                 }
