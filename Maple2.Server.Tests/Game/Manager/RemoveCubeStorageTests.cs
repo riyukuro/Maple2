@@ -127,4 +127,39 @@ public class RemoveCubeStorageTests {
         using GameStorage.Request db = test.Storage.Context();
         Assert.That(db.GetCube(cube.Id), Is.Not.Null);
     }
+
+    // The cube's storage stack is already at its largest (and no other stack takes it), so the storage cannot take it
+    // back: the cube stays placed with its row and nothing is lost.
+    [Test]
+    public void Remove_WithTheStorageStackFull_LeavesTheCubePlaced_AndLosesNothing() {
+        var position = new Vector3B(-1, -1, 1);
+        PlotCube cube = Place(position, out long uid);
+        Maple2.Model.Game.Item stack = session.Item.Furnishing.GetItem(CubeItemId)!;
+        stack.Amount = stack.Metadata.Property.SlotMax;
+        int held = stack.Amount;
+        int storedBefore = Stored(uid);
+
+        Assert.That(session.Housing.TryRemoveCube(plot, position, out PlotCube? removed), Is.False);
+
+        Assert.That(removed, Is.Null);
+        Assert.That(Sent(), Is.EqualTo(new[] { Error(UgcMapError.s_ugcmap_cant_be_removed) }));
+        Assert.That(plot.Cubes[position], Is.SameAs(cube));
+        Assert.That(session.Item.Furnishing.GetItem(CubeItemId)!.Amount, Is.EqualTo(held));
+        Assert.That(Stored(uid), Is.EqualTo(storedBefore));
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetCube(cube.Id), Is.Not.Null);
+    }
+
+    [Test]
+    public void Remove_OfACubeWithItsOwnExpiry_JoinsTheEmptyStack() {
+        var position = new Vector3B(-1, -1, 1);
+        PlotCube cube = Place(position, out _);
+        cube.ExpiryTime = DateTimeOffset.UtcNow.AddDays(1).ToUnixTimeSeconds();
+
+        Assert.That(session.Housing.TryRemoveCube(plot, position, out _), Is.True);
+
+        Assert.That(plot.Cubes, Does.Not.ContainKey(position));
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetCube(cube.Id), Is.Null);
+    }
 }
