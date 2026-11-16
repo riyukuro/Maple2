@@ -375,7 +375,7 @@ public class ItemUseHandler : FieldPacketHandler {
         // The package's cubes are stored as they are placed, so the used package is stored too (outside the plot's
         // edit lock, which a store must not be taken under): left to the session save, a crash gave it back next to
         // the built home.
-        session.SavePurchase(save => session.Item.Inventory.Save(save));
+        StoreBag(session, "home package", item);
     }
 
     private static void HandleStoryBook(GameSession session, Item item) {
@@ -1147,11 +1147,10 @@ public class ItemUseHandler : FieldPacketHandler {
             return;
         }
 
-        // The scroll is stored taken at once (ConsumeNow): the started quests (and their accept items) are stored at
-        // once, so a scroll taken in memory only came back on a crash before the session save.
-        if (!session.Item.Inventory.ConsumeNow([(item.Uid, 1)])) {
-            Logger.Error("Quest scroll {ItemUid} of {CharacterId}: quests started, the scroll not taken", item.Uid, session.CharacterId);
-        }
+        session.Item.Inventory.Consume(item.Uid, 1);
+        // The started quests (and their accept items) are stored at once, so the bag (the scroll taken) is stored right
+        // after: left to the session save, a crash gave the scroll back with the quests started.
+        StoreBag(session, "quest scroll", item);
         session.Send(ItemUsePacket.QuestScroll(item.Id));
     }
 
@@ -1634,9 +1633,18 @@ public class ItemUseHandler : FieldPacketHandler {
             return;
         }
 
-        // Stored taken at once, as the started quest is (see HandleQuestScroll).
-        if (!session.Item.Inventory.ConsumeNow([(item.Uid, 1)])) {
-            Logger.Error("Quest start item {ItemUid} of {CharacterId}: quest started, the item not taken", item.Uid, session.CharacterId);
+        session.Item.Inventory.Consume(item.Uid, 1);
+        // Stored with the started quest (see HandleQuestScroll).
+        StoreBag(session, "quest start item", item);
+    }
+
+    // Stores the bag at once after an item use whose outcome is stored at once. Not under the bag lock.
+    private static void StoreBag(GameSession session, string use, Item item) {
+        if (!session.TrySavePurchase(db => {
+                session.Item.Inventory.Save(db);
+                return true;
+            })) {
+            Serilog.Log.Error("Item use ({Use}) {ItemUid} of {CharacterId}: done, the bag not stored with it", use, item.Uid, session.CharacterId);
         }
     }
 

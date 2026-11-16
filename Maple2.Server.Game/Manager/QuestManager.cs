@@ -1226,7 +1226,6 @@ public sealed class QuestManager {
             return false;
         }
 
-        IReadOnlyList<(long Uid, int Amount)>? plan;
         lock (session.Item) {
             if (session.Item.Inventory.Find(ItemTag.FameCompletionTicket).Sum(item => item.Amount) < cost) {
                 return false;
@@ -1234,13 +1233,19 @@ public sealed class QuestManager {
             if (!Complete(quest, bypassConditions: true)) {
                 return false;
             }
-            plan = session.Item.Inventory.PlanConsume([new IngredientInfo(ItemTag.FameCompletionTicket, cost)]);
+            // Taken under the lock that counted them, so no other spend can take them between the count and the take.
+            if (!session.Item.Inventory.Consume([new IngredientInfo(ItemTag.FameCompletionTicket, cost)])) {
+                logger.Error("Quest {QuestId} completed but {Count} completion tickets could not be taken", questId, cost);
+            }
         }
-        // The tickets are stored taken at once (ConsumeNow, outside the bag lock as its purchase save needs): the
-        // completion and its rewards are stored at once, so tickets taken in memory only came back on a crash before
-        // the session save, with the quest completed.
-        if (!session.Item.Inventory.ConsumeNow(plan)) {
-            logger.Error("Quest {QuestId} completed but {Count} completion tickets could not be taken", questId, cost);
+        // The completion and its rewards are stored at once, so the bag (the tickets taken) is stored right after,
+        // outside the bag lock as the purchase save needs: left to the session save, a crash gave the tickets back with
+        // the quest completed.
+        if (!session.TrySavePurchase(db => {
+                session.Item.Inventory.Save(db);
+                return true;
+            })) {
+            logger.Error("Quest {QuestId} completed with tickets, the bag not stored with it", questId);
         }
         return true;
     }
