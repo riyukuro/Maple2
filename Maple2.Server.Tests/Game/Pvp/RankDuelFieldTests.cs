@@ -478,4 +478,36 @@ public class RankDuelFieldTests {
         MethodInfo pool = typeof(FieldManager).GetMethod("GetTargetPool", Any)!;
         return ((IEnumerable<IActor>) pool.Invoke(duel.Field, [caster, prisms, type, 10, new List<IActor> { caster }])!).ToList();
     }
+
+    // Every round runs out with no death: the match is a draw, both duelists get the draw's intro and the World is
+    // told the match ended.
+    [Test]
+    public void EveryRoundRunningOut_IsADrawForBoth() {
+        Duel duel = Start();
+        Fight(duel);
+        duel.A.TakeSent();
+        duel.B.TakeSent();
+        long tick = duel.Field.FieldTick + RankDuelMatchState.LoadMs + RankDuelMatchState.CountdownMs;
+        for (int i = 0; i < 2000 && duel.Field.RankDuel!.Phase != RankDuelPhase.Ended; i++) {
+            tick += 1000;
+            duel.Field.RankDuel.Update(tick);
+        }
+        Assert.That(duel.Field.RankDuel!.Phase, Is.EqualTo(RankDuelPhase.Ended));
+        string draw = "B600" + "1E";
+        Assert.That(Pvp(duel.A).Any(packet => packet.StartsWith(draw)), Is.True);
+        Assert.That(Pvp(duel.B).Any(packet => packet.StartsWith(draw)), Is.True);
+    }
+
+    // The instance types a rank duel's players cannot be moved out of by a duel request: the PvP, survival and
+    // dungeon-lobby rooms refuse; open fields, homes and guild houses do not.
+    [TestCase(InstanceType.solo, true)]
+    [TestCase(InstanceType.GuildPvp, true)]
+    [TestCase(InstanceType.RankingPvp, true)]
+    [TestCase(InstanceType.MapleSurvival, true)]
+    [TestCase(InstanceType.FieldWar, true)]
+    [TestCase(InstanceType.none, false)]
+    [TestCase(InstanceType.channelScale, false)]
+    public void RefusesInstance_TheRoomsAreRefusedOpenFieldsAreNot(InstanceType type, bool refused) {
+        Assert.That(RankDuelField.RefusesInstance(type), Is.EqualTo(refused));
+    }
 }
