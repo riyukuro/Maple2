@@ -32,12 +32,11 @@ public static class SkillUtils {
         float adjustedAngle = angle + (placed ? range.RotateZDegree : 0) + 180;
         var origin = new Vector2(position.X + offset.X, position.Y + offset.Y);
         float bottom = position.Z + offset.Z;
-        // Region buffs use the same box shape but are centered on the target instead of projecting forward from the caster.
-        if (range.Type == SkillRegion.Box && applyTarget is ApplyTargetType.RegionBuff or ApplyTargetType.RegionBuff2) {
-            float length = range.Distance + range.RangeAdd.Y;
-            float width = range.Width + range.RangeAdd.X;
-            return new Prism(new Rectangle(origin, width, length, adjustedAngle), bottom, range.Height + range.RangeAdd.Z);
-        }
+        // A region buff's box (applyTarget 5 and 6, as every cube skill's) is the client's box too: the client builds
+        // the shape from the range alone (CSkillCollisionManager::GetCached), with no case for the apply target. The
+        // data centres a box by its add.y (KR: 112,364 of the cube skills' box placements have add.y equal to the
+        // distance, e.g. 70000002 50 and 50); the box was centred here before, whatever its add.y, and its height ran
+        // from the origin up by height + add.z.
         if (range.Type == SkillRegion.None) {
             return new Prism(IPolygon.Null, 0, 0);
         }

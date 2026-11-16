@@ -219,4 +219,36 @@ public class SkillTargetShapeTests {
         Assert.That(SkillHitRules.RegionCentre(new Vector3(0, 300, 0), player), Is.EqualTo(new Vector3(0, 300, 0)));
         Assert.That(SkillHitRules.RegionCentre(new Vector3(0, 450, 0), player), Is.EqualTo(player));
     }
+
+    // A region buff's box (applyTarget 5, as the cube skills') is the client's box, which the client builds from the
+    // range alone (CSkillCollisionManager::GetCached; CBoxCollision::vfunc_4 runs add.y behind to the distance ahead
+    // and add.z below to the height above). The data centres a box by its add.y: 70000002 (KR, 44,041 cube placements:
+    // distance 50, add.y 50, width 100, height 70) covers its cube, 50 either way. 70000005 (distance 150, add.y 50)
+    // reaches 150 ahead and 50 behind; 70003001 (distance 900, no add.y) runs 900 ahead only; 35010010 (height 200,
+    // add.z 200) reaches from 200 below to 200 above. Before, every such box was centred, its height from the origin up.
+    [Test]
+    public void ARegionBuffBoxIsTheClientsBox() {
+        Prism Box(float distance, float addY, float width, float height, float addZ = 0) {
+            SkillMetadataAttack attack = Region(SkillRegion.Box, distance, width);
+            attack = attack with { Range = attack.Range with { Height = height, RangeAdd = new Vector3(0, addY, addZ), ApplyTarget = ApplyTargetType.RegionBuff } };
+            return attack.GetRegionPrism(Vector3.Zero, 0);
+        }
+        Vector2 ahead = Region(SkillRegion.Box, 300, 150).GetPrism(Vector3.Zero, 0).Polygon.Contains(0, 200) ? Vector2.UnitY : -Vector2.UnitY;
+        Vector3 At(float along, float z = 10) => new(ahead * along, z);
+
+        Prism cube = Box(50, 50, 100, 70);
+        Prism attackDown = Box(150, 50, 150, 150);
+        Prism strong = Box(900, 0, 150, 150);
+        Prism tall = Box(75, 75, 150, 200, 200);
+        Assert.Multiple(() => {
+            Assert.That(cube.Contains(At(45)) && cube.Contains(At(-45)), Is.True, "70000002 either way");
+            Assert.That(cube.Contains(At(55)) || cube.Contains(At(-55)), Is.False, "70000002 past its cube");
+            Assert.That(attackDown.Contains(At(140)) && attackDown.Contains(At(-45)), Is.True, "70000005 150 ahead, 50 behind");
+            Assert.That(attackDown.Contains(At(-60)), Is.False, "70000005 past 50 behind");
+            Assert.That(strong.Contains(At(850)), Is.True, "70003001 900 ahead");
+            Assert.That(strong.Contains(At(-50)), Is.False, "70003001 nothing behind");
+            Assert.That(tall.Contains(At(0, -150)) && tall.Contains(At(0, 190)), Is.True, "35010010 200 below to 200 above");
+            Assert.That(tall.Contains(At(0, 250)), Is.False, "35010010 over its height");
+        });
+    }
 }
