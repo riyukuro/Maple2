@@ -2135,6 +2135,15 @@ public partial class FieldManager {
             return false;
         }
 
+        // A pet that leaves with its owner goes at once: the scheduler does not run while the field is empty, so
+        // the removal waited for the next arrival, who was then told of a pet it never saw.
+        if (removeDelay <= TimeSpan.Zero) {
+            Broadcast(FieldPacket.RemovePet(objectId));
+            Broadcast(ProxyObjectPacket.RemovePet(objectId));
+            pet.Dispose();
+            return true;
+        }
+
         Scheduler.Schedule(() => {
             Broadcast(FieldPacket.RemovePet(objectId));
             Broadcast(ProxyObjectPacket.RemovePet(objectId));

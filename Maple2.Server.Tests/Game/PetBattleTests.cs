@@ -7,6 +7,7 @@ using Maple2.File.Ingest;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.Skill;
@@ -375,6 +376,17 @@ public class PetBattleTests : NpcCastFixture {
         FieldNpc other = Field.SpawnNpc(metadata!, new Vector3(firstIsNearer ? 2500 : 950, 0, 0), Vector3.Zero)!;
         npc.Position = new Vector3(firstIsNearer ? 1000 : 2600, 0, 0);
         Assert.That(Search(), Is.SameAs(firstIsNearer ? npc : other));
+    }
+
+    // A pet removed with no delay (its owner leaves the field) is removed from the field's view at once, not on the
+    // field's next scheduler run, which an empty field does not make until somebody arrives.
+    [Test]
+    public void APetRemovedWithItsOwner_IsRemovedAtOnce() {
+        Pet(owned: true);
+        test.TakeSentOps();
+        Assert.That(Field.RemovePet(pet.ObjectId), Is.True);
+        Assert.That(Field.Pets.ContainsKey(pet.ObjectId), Is.False);
+        Assert.That(test.TakeSentOps(), Does.Contain(SendOp.FieldRemovePet));
     }
 
     // The pet battle AI (Pet/AI_DefaultPetBattle.xml) has no target node: nothing in it changes the target, so a pet
