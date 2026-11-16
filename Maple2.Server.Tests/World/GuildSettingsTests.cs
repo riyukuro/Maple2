@@ -10,10 +10,11 @@ using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.Server.Tests.Game;
 using Maple2.Server.World.Containers;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.World;
 
-// The guild's settings on the World server: rank (Guild 67), focus (68), emblem (65) and the mini game
+// The guild's settings on the World server: rank (Guild 67), focus (68), emblem (65), poster, and the mini game
 // event (99, KR table/guildevent.xml <guildEvent id="1" mapCode="66000001" />). Each is refused without its right,
 // and a kept change is in the stored row (the search and a World restart read it).
 public class GuildSettingsTests {
@@ -115,6 +116,33 @@ public class GuildSettingsTests {
         Assert.That(manager.UpdateEmblem(master.CharacterId, "master.png"), Is.EqualTo(GuildError.none));
 
         Assert.That((guild.Emblem, Stored().Emblem), Is.EqualTo(("master.png", "master.png")));
+    }
+
+    // Any member may put up a poster (the client asks for no right); one of the same id is replaced. Both are in
+    // the stored row: a poster is not lost on a World restart before the next guild save.
+    [Test]
+    public void AddOrUpdatePoster_AnyMember_ReplacesAndIsStored() {
+        Assert.That(manager.AddOrUpdatePoster(1, "first.png", member.CharacterId, member.Name, 11), Is.EqualTo(GuildError.none));
+        Assert.That(manager.AddOrUpdatePoster(1, "second.png", master.CharacterId, master.Name, 12), Is.EqualTo(GuildError.none));
+        Assert.That(manager.AddOrUpdatePoster(1, "stranger.png", 999, "Stranger", 13), Is.EqualTo(GuildError.s_guild_err_null_member));
+
+        Assert.That(guild.Posters.Select(poster => (poster.Id, poster.Picture, poster.OwnerId)),
+            Is.EqualTo(new[] { (1, "second.png", master.CharacterId) }));
+        Assert.That(Stored().Posters.Select(poster => (poster.Id, poster.Picture, poster.OwnerId, poster.OwnerName)),
+            Is.EqualTo(new[] { (1, "second.png", master.CharacterId, "Master") }));
+    }
+
+    [Test]
+    public void AddOrUpdatePoster_NotStored_KeepsTheOldPoster() {
+        Assert.That(manager.AddOrUpdatePoster(1, "first.png", member.CharacterId, member.Name, 11), Is.EqualTo(GuildError.none));
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Guild>().Any(entry => entry.State == EntityState.Modified);
+
+        Assert.That(manager.AddOrUpdatePoster(1, "second.png", master.CharacterId, master.Name, 12), Is.EqualTo(GuildError.s_guild_err_unknown));
+        Assert.That(manager.AddOrUpdatePoster(2, "other.png", master.CharacterId, master.Name, 13), Is.EqualTo(GuildError.s_guild_err_unknown));
+        test.FailSave = null;
+
+        Assert.That(guild.Posters.Select(poster => (poster.Id, poster.Picture)), Is.EqualTo(new[] { (1, "first.png") }));
+        Assert.That(Stored().Posters.Select(poster => (poster.Id, poster.Picture)), Is.EqualTo(new[] { (1, "first.png") }));
     }
 
     // KR event 1: opened by the master of a guild a day old, it is open for 30 seconds; a second open in that time,

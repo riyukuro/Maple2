@@ -1420,18 +1420,41 @@ public class GuildManager : IDisposable {
             return GuildError.s_guild_err_null_member;
         }
 
-        GuildPoster? oldPoster = Guild.Posters.FirstOrDefault(poster => poster.Id == id);
-        if (oldPoster != null) {
-            Guild.Posters.Remove(oldPoster);
-        }
+        // Stored before the answer, under the guild lock as every save (the poster list is in the guild row): a poster
+        // kept only in memory was lost on a World restart before the next guild save. A failed save undoes it.
+        lock (guildLock) {
+            int index = -1;
+            for (int i = 0; i < Guild.Posters.Count; i++) {
+                if (Guild.Posters[i].Id == id) {
+                    index = i;
+                    break;
+                }
+            }
+            GuildPoster? oldPoster = index < 0 ? null : Guild.Posters[index];
+            var poster = new GuildPoster {
+                Id = id,
+                Picture = picture,
+                OwnerId = ownerId,
+                OwnerName = ownerName,
+                ResourceId = resourceId,
+            };
+            if (index < 0) {
+                Guild.Posters.Add(poster);
+            } else {
+                Guild.Posters[index] = poster;
+            }
 
-        Guild.Posters.Add(new GuildPoster {
-            Id = id,
-            Picture = picture,
-            OwnerId = ownerId,
-            OwnerName = ownerName,
-            ResourceId = resourceId,
-        });
+            // The stored row keeps no resource id (only the upload staging reads it).
+            if (!TrySave(row => row.Posters.Any(stored => stored.Id == id && stored.Picture == picture
+                    && stored.OwnerId == ownerId && stored.OwnerName == ownerName))) {
+                if (oldPoster == null) {
+                    Guild.Posters.Remove(poster);
+                } else {
+                    Guild.Posters[index] = oldPoster;
+                }
+                return GuildError.s_guild_err_unknown;
+            }
+        }
 
         Broadcast(new GuildRequest {
             UpdatePoster = new GuildRequest.Types.UpdatePoster {
