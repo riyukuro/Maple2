@@ -484,7 +484,8 @@ public class Buff : IUpdatable, IByteSerializable {
         if (Owner is FieldPlayer victim) {
             victim.PkKilledBy(caster, healthBefore);
         }
-        if (record.RecoverHp != 0) {
+        // The lifesteal goes to a living caster, up to its max health (Stat.Add).
+        if (record.RecoverHp > 0 && !caster.IsDead) {
             caster.Stats.Values[BasicAttribute.Health].Add(record.RecoverHp);
             Field.Broadcast(StatsPacket.Update(caster, BasicAttribute.Health));
         }

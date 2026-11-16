@@ -81,7 +81,11 @@ public class DotDamageRecord {
         HpAmount = (int) -hpAmount;
         SpAmount = -Math.Max(0, Buff.AmountByStacks(dotDamage.SpValue, stacks));
         EpAmount = -Math.Max(0, Buff.AmountByStacks(dotDamage.EpValue, stacks));
-        RecoverHp = (int) (dotDamage.RecoverHpByDamage * HpAmount);
+        // casterRecoveryHpByDamage: the caster heals that part of the health the tick takes. The client only loads the
+        // value (AdditionalLevelData, additionalactionadditional.cpp:1284) and computes no amount from it, so the rule is
+        // the server's: the rate times the tick's damage, rounded down, nothing for a tick that takes no health. HpAmount
+        // is the negative change of the holder's health, so the damage is its negation.
+        RecoverHp = HpAmount < 0 ? (int) (dotDamage.RecoverHpByDamage * -HpAmount) : 0;
     }
 
     // Invoke type 5 (IncreaseDotDamage): the invokes keyed on a dot's effect or its effect group raise the dot's
