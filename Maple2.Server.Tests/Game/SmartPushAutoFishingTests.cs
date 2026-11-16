@@ -23,6 +23,8 @@ public class SmartPushAutoFishingTests {
     private const int PushId = 1;
     private const int EffectId = 100000011;
     private const int EffectDurationMs = 10800000;
+    private const int MissingPushId = 2;
+    private const int MissingEffectId = 100000012; // not in the field's skill data: AddBuff fails
 
     private TestGameSession test = null!;
     private GameSession session = null!;
@@ -32,12 +34,14 @@ public class SmartPushAutoFishingTests {
         test = new TestGameSession();
         test.SetTable(new SmartPushTable(new Dictionary<int, SmartPushMetadata> {
             [PushId] = new(PushId, "AutoFishing", SmartPushType.additionalEffect, EffectId, 300, default),
+            [MissingPushId] = new(MissingPushId, "SafeRiding", SmartPushType.additionalEffect, MissingEffectId, 120, default),
         }));
         test.SetTable(new AutoActionTable(new Dictionary<string, IReadOnlyDictionary<int, AutoActionMetaData>> {
             ["AutoFishing"] = new Dictionary<int, AutoActionMetaData> {
                 [0] = new("AutoFishing", 0, 30, 40, 0),
                 [1] = new("AutoFishing", 1, 60, 60, 0),
                 [2] = new("AutoFishing", 2, 180, 150, 0),
+                [9] = new("AutoFishing", 9, 0, 10, 0),
             },
         }));
         session = test.Start();
@@ -65,9 +69,9 @@ public class SmartPushAutoFishingTests {
         typeof(Maple2.Server.Game.Model.Actor<Player>).GetField("<Field>k__BackingField", any)!.SetValue(session.Player, field);
     }
 
-    private void Buy(int package) {
+    private void Buy(int package, int pushId = PushId) {
         new SmartPushHandler().Handle(session, TestGameSession.Packet(writer => {
-            writer.WriteInt(PushId);
+            writer.WriteInt(pushId);
             writer.WriteInt(package);
             writer.WriteInt(0);
             writer.WriteBool(false);
@@ -89,6 +93,46 @@ public class SmartPushAutoFishingTests {
             Assert.That(sent.Count(packet => TestGameSession.Op(packet) == SendOp.Buff), Is.EqualTo(1));
             Assert.That(sent.Where(packet => TestGameSession.Op(packet) == SendOp.SmartPush).Select(Convert.ToHexString),
                 Is.EqualTo(new[] { Convert.ToHexString(BitConverter.GetBytes((ushort) SendOp.SmartPush)) + "01" + "01000000" + package.ToString("X2") + "000000" }));
+        });
+    }
+
+    // The client buys a package only when the buff is gone; a buy while held is refused: no price, the end kept.
+    [Test]
+    public void BuyWhileHeld_IsRefused_AndKeepsTheEnd() {
+        Buy(2);
+        Buff held = session.Player.Buffs.EnumerateBuffs(EffectId).Single();
+        long end = held.EndTick;
+        test.TakeSent();
+
+        Buy(0);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.Meret, Is.EqualTo(217 - 150));
+            Assert.That(session.Player.Buffs.EnumerateBuffs(EffectId).Single().EndTick, Is.EqualTo(end));
+            Assert.That(test.TakeSent().Select(TestGameSession.Op), Has.None.EqualTo(SendOp.SmartPush).And.None.EqualTo(SendOp.Buff));
+        });
+    }
+
+    // A buff not given costs nothing and has no notice.
+    [Test]
+    public void BuffNotGiven_TakesNoPrice_AndSendsNoNotice() {
+        Buy(0, MissingPushId);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.Meret, Is.EqualTo(217));
+            Assert.That(session.Player.Buffs.EnumerateBuffs(MissingEffectId), Is.Empty);
+            Assert.That(test.TakeSent().Select(TestGameSession.Op), Has.None.EqualTo(SendOp.SmartPush));
+        });
+    }
+
+    // A package of no minutes is not sold.
+    [Test]
+    public void PackageWithoutMinutes_IsNotSold() {
+        Buy(9);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.Meret, Is.EqualTo(217));
+            Assert.That(session.Player.Buffs.EnumerateBuffs(EffectId), Is.Empty);
         });
     }
 }
