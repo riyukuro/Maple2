@@ -410,6 +410,24 @@ public class SkyFortressTests {
         });
     }
 
+    // From a dungeon the move goes to another server: the World is asked for the fortress map and its portal
+    // (FameContentsSkyFortressGotoPortalID), where the player arrives as on a move in the same server. The mission
+    // attack's move names no portal: -1, not an unset 0.
+    [Test]
+    public void SkyFortressMove_FromADungeon_ArrivesAtTheFortressPortal() {
+        Login(Seasons(RequireQuest));
+        Hold(RequireQuest, QuestState.Completed);
+        test.AddMap(TestGameSession.Map(Target) with { Limit = (MapMetadataLimit) RuntimeHelpers.GetUninitializedObject(typeof(MapMetadataLimit)) });
+        test.EnterMovingOut(TestGameSession.Map(2000001));
+
+        new QuestHandler { TableMetadata = test.TableMetadata, ServerTableMetadata = test.ServerTableMetadata }
+            .Handle(test.Session, TestGameSession.Packet(writer => writer.WriteByte(14)));
+
+        Assert.That(test.World.Moves, Has.Count.EqualTo(1));
+        Assert.That((test.World.Moves[0].MapId, test.World.Moves[0].PortalId),
+            Is.EqualTo((Target, test.ServerTableMetadata.ConstantsTable.FameContentsSkyFortressGotoPortalID)));
+    }
+
     [TestCase(true)]
     [TestCase(false)]
     public void MissionAttack_FromADungeon_CountsWhenItGoes(bool goes) {
@@ -425,6 +443,7 @@ public class SkyFortressTests {
         Assert.Multiple(() => {
             Assert.That(test.World.Moves, Has.Count.EqualTo(1));
             Assert.That(test.Session.Quest.MissionAttackCount(), Is.EqualTo(goes ? 1 : 0));
+            Assert.That(test.World.Moves[0].PortalId, Is.EqualTo(-1));
         });
     }
 }

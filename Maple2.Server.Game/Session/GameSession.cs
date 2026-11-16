@@ -868,7 +868,7 @@ public sealed partial class GameSession : Core.Network.Session {
                 newField = dungeonField.Lobby;
                 Dungeon.LeaveStage();
             } else {
-                Migrate(mapId, beforeMove: beforeMove, position: position);
+                Migrate(mapId, beforeMove: beforeMove, position: position, portalId: portalId);
                 fieldChangeMigrated = true;
                 newField = null;
                 return false;
@@ -1683,7 +1683,7 @@ public sealed partial class GameSession : Core.Network.Session {
     // the World server gives no address); a second save of what it changed that does not store puts the return
     // position back (Undo). position is the spot on the map to arrive at (the return field's saved
     // spot); default is the map's spawn.
-    public void Migrate(int mapId, long ownerId = 0, Action? beforeMove = null, Vector3 position = default) {
+    public void Migrate(int mapId, long ownerId = 0, Action? beforeMove = null, Vector3 position = default, int portalId = -1) {
         // Not to a map the played client does not have (see PrepareFieldInternal).
         if (MapMetadata.TryGet(mapId, out MapMetadata? target) && target.Property.NotInPlayedClient) {
             Send(NoticePacket.Message(FieldEntryRules.NotInPlayedClientNotice(target.Id, target.Name)));
@@ -1736,6 +1736,8 @@ public sealed partial class GameSession : Core.Network.Session {
                 OwnerId = ownerId,
                 InstancedContent = isInstanced,
                 PetUid = SummonedPetUid,
+                // The portal the player arrives at (EnterServer); -1, none, rather than an unset 0.
+                PortalId = portalId,
             };
             if (position != default) {
                 request.PositionX = position.X;
