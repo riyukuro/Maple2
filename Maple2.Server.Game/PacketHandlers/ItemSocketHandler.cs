@@ -434,8 +434,22 @@ public class ItemSocketHandler : FieldPacketHandler {
                     return; // the price check sent its own error
             }
 
+            // The gem's row is made at owner 0 and goes to the bag in memory, so the session save writes it with the
+            // emptied socket and the price: made as the character's at once (an add of a new item), a crash before
+            // that save kept the gem in the socket and in the bag, the price not taken.
+            Item? made;
+            using (GameStorage.Request db = session.GameStorage.Context()) {
+                made = db.CreateItem(0, gem!);
+            }
+            if (made == null) {
+                price!.ReturnMesos(session);
+                session.Send(ItemSocketPacket.Error(code: 6, error: s_itemsocketsystem_error_server_default));
+                return;
+            }
+            gem = made;
+
             // The mesos are taken, then the gem goes to the bag, then the fragments (checked under this lock).
-            if (!session.Item.Inventory.Add(gem!, true)) {
+            if (!session.Item.Inventory.Add(gem, true)) {
                 price!.ReturnMesos(session);
                 session.Send(ItemInventoryPacket.Error(Maple2.Model.Error.ItemInventoryError.s_err_inventory));
                 return;

@@ -54,6 +54,41 @@ public class GemstoneSocketSlotTests {
         }));
     }
 
+    // A gem taken off with no session save after it (a crash): the stored rows still have it in the socket only, not
+    // also in the bag; the bag save then writes it to the bag with the socket emptied. Before, the gem's new row was
+    // the character's at once while the socket was emptied in memory, and a reload had the gem twice.
+    [Test]
+    public void TakeOff_ACrashLeavesTheGemInTheSocketOnly() {
+        GameSession session = Start();
+        test.EnterMap(TestGameSession.Map(90000100));
+        session.Currency.Meso = 1_000_000;
+        Equip(session, 0);
+        Save(session);
+        Assert.That(GemRows(), Is.Zero);
+
+        Unequip(session, 0);
+        Assert.That(gear.Socket!.Sockets[0], Is.Null);
+        Assert.That(session.Item.Inventory.Find(40200001).Sum(item => item.Amount), Is.EqualTo(1));
+        int crashed = GemRows();
+        Save(session);
+
+        Assert.Multiple(() => {
+            Assert.That(crashed, Is.Zero, "no save: the gem is in the socket only");
+            Assert.That(GemRows(), Is.EqualTo(1), "saved: the gem is in the bag");
+        });
+    }
+
+    private void Save(GameSession session) {
+        using Maple2.Database.Storage.GameStorage.Request db = test.Storage.Context();
+        session.Item.Inventory.Save(db);
+    }
+
+    private int GemRows() {
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        return Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.AsNoTracking(context.Item)
+            .Where(row => row.ItemId == 40200001 && row.OwnerId == test.CharacterId).AsEnumerable().Sum(row => row.Amount);
+    }
+
     private string[] Sent() {
         return test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.ItemSocketSystem).Select(Convert.ToHexString).ToArray();
     }
