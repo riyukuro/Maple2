@@ -776,7 +776,15 @@ public class RequestCubeHandler : FieldPacketHandler {
 
         byte area = home.IsPlanner ? home.PlannerArea : home.Area;
         byte height = home.IsPlanner ? home.PlannerHeight : home.Height;
-        layout = db.SaveHomeLayout(new HomeLayout(slot, name, area, height, DateTimeOffset.Now, plot.Cubes.Values.ToList()));
+        // The slot keeps the home's look (background, lighting, camera) with its size and cubes, as a blueprint does:
+        // the Saved Layouts and the blueprint designer share one slot dialog and one "save the home" text in the client
+        // (UIHomeSaveSlotDialog, which sends 0x2e or 0x40 and shows only a name and a time), and a load that left the
+        // look as it was brought the furniture back in another interior.
+        layout = db.SaveHomeLayout(new HomeLayout(slot, name, area, height, DateTimeOffset.Now, plot.Cubes.Values.ToList()) {
+            Background = home.Background,
+            Lighting = home.Lighting,
+            Camera = home.Camera,
+        });
         if (layout is null) {
             Logger.Error("Failed to save layout for {AccountId}", session.AccountId);
             session.Send(CubePacket.SaveLayoutError(UgcMapError.s_ugcmap_db));
@@ -817,7 +825,8 @@ public class RequestCubeHandler : FieldPacketHandler {
 
         session.Housing.StagedItemBlueprint = null;
         session.Housing.StagedBlueprintItemUid = 0;
-        session.Housing.ApplyLayout(plot, layout);
+        // The slot's look is applied with its cubes (isBlueprint is the look's switch).
+        session.Housing.ApplyLayout(plot, layout, isBlueprint: true);
     }
 
     // The client confirms the bill of a blueprint item (UIUGCCubeBillDialog::SendRequestCube and FUN_140ee83f0,

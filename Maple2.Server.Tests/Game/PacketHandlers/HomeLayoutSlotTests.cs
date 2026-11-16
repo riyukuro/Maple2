@@ -1,3 +1,4 @@
+using Maple2.Database.Storage;
 using Maple2.Server.Core.Packets;
 using System;
 using System.Collections.Generic;
@@ -111,5 +112,36 @@ public class HomeLayoutSlotTests {
         Load(1);
 
         Assert.That((home.Area, home.Height), Is.EqualTo(((byte) 12, (byte) 7)));
+    }
+
+    // The slot keeps the home's look with its size: it is stored with the row and a load brings the look back with the
+    // cubes (a layout saved with the look read as 0/0/0 and a load left the look as it was).
+    [Test]
+    public void SavedLook_IsStoredWithTheSlot_AndAppliedByTheLoad() {
+        Home home = session.Player.Value.Home;
+        home.SetBackground(HomeBackground.MoonlitForest);
+        home.SetLighting(HomeLighting.Warm);
+        home.SetCamera(HomeCamera.TopView);
+        Save(1, "layout");
+
+        HomeLayout saved = home.Layouts.Single();
+        using (GameStorage.Request db = test.Storage.Context()) {
+            HomeLayout read = db.GetHomeLayout(saved.Uid)!;
+            Assert.That((read.Background, read.Lighting, read.Camera), Is.EqualTo((HomeBackground.MoonlitForest, HomeLighting.Warm, HomeCamera.TopView)));
+        }
+
+        home.SetBackground(HomeBackground.Basic);
+        home.SetLighting(HomeLighting.Basic);
+        home.SetCamera(HomeCamera.QuarterView);
+        session.Field!.Players[1] = session.Player; // the field tells its players
+        test.TakeSent();
+        Load(1);
+
+        Assert.That((home.Background, home.Lighting, home.Camera), Is.EqualTo((HomeBackground.MoonlitForest, HomeLighting.Warm, HomeCamera.TopView)));
+        Assert.That(Sent(), Is.SupersetOf(new[] {
+            Convert.ToHexString(CubePacket.SetBackground(HomeBackground.MoonlitForest).ToArray()),
+            Convert.ToHexString(CubePacket.SetLighting(HomeLighting.Warm).ToArray()),
+            Convert.ToHexString(CubePacket.SetCamera(HomeCamera.TopView).ToArray()),
+        }));
     }
 }
