@@ -165,11 +165,16 @@ public class BattleState {
         float distanceSquared = (target.Position - position).LengthSquared();
         float verticalOffset = target.Position.Z - position.Z;
 
-        // A battle pet trails its owner (PetFollow) and sees no target below its own height (sightHeightDown 0 on every
-        // KR pet): on a slope it stood above the monsters by its owner and never fought. Chosen here: it also sees what
-        // stands in its height window from its owner's height, while it stands above its owner (below, on another floor,
-        // the owner's window would show it monsters it cannot reach).
-        if (!IsInRange(distanceSquared, verticalOffset, radiusSquared, heightUp, -heightDown)
+        // A battle pet takes a target in its sight radius that it can get to, whatever the height step (FieldPet.Reaches,
+        // chosen here): its height window (sightHeightDown 0 on every KR pet) hid the monsters by its owner below it on a
+        // slope or a block down, and showed it one on a ledge it cannot climb.
+        if (actor is FieldPet { Battles: true } reachingPet && distanceSquared < radiusSquared && reachingPet.Reaches(target.Position) is { } reaches) {
+            if (!reaches) {
+                return false;
+            }
+        } else if (!IsInRange(distanceSquared, verticalOffset, radiusSquared, heightUp, -heightDown)
+            // Off the navmesh, a battle pet above its owner also sees what stands in its height window from its owner's
+            // height (below, on another floor, the owner's window would show it monsters it cannot reach).
             && !(actor is FieldPet { Battles: true, OwnerPlayer: { } petOwner } && position.Z > petOwner.Position.Z
                  && IsInRange(distanceSquared, target.Position.Z - petOwner.Position.Z, radiusSquared, heightUp, -heightDown))) {
             return false;

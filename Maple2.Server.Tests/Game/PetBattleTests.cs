@@ -1,10 +1,13 @@
 using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using DotRecast.Core.Numerics;
+using DotRecast.Detour;
 using Maple2.File.Ingest;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.PacketHandlers;
@@ -27,8 +30,41 @@ public class PetBattleTests : NpcCastFixture {
     // The sight of every KR pet npc (e.g. 61000002): 3000 around, 300 up, 0 down.
     private static readonly NpcMetadataDistance PetSight = new(100, 3000, 300, 0, 3000, 250, 80);
 
+    // The field's navmesh: the fixture's flat floor (map x and y -2000 to 2000, height 0), and with ledge also a ledge
+    // one block up (height 150) over the floor's x 500 to 2000, with no link between the two.
+    private bool ledge;
+
+    protected override Navigation BuildNavigation() => ledge ? LedgeNavigation() : base.BuildNavigation();
+
+    private static Navigation LedgeNavigation() {
+        const ushort none = 0xffff;
+        return TriggerHallGameTests.MeshNavigation(new DtNavMeshCreateParams {
+            verts = [0, 0, 0, 0, 0, 400, 400, 0, 400, 400, 0, 0, 250, 15, 0, 250, 15, 400, 400, 15, 400, 400, 15, 0],
+            vertCount = 8,
+            polys = [0, 1, 2, 3, none, none, none, none, none, none, none, none, 4, 5, 6, 7, none, none, none, none, none, none, none, none],
+            polyAreas = [0, 0],
+            polyFlags = [1, 1],
+            polyCount = 2,
+            nvp = 6,
+            walkableHeight = 2,
+            walkableRadius = 0.5f,
+            walkableClimb = 0.5f,
+            bmin = new RcVec3f(-20, 0, -20),
+            bmax = new RcVec3f(20, 3, 20),
+            cs = 0.1f,
+            ch = 0.1f,
+            buildBvTree = true,
+            offMeshConVerts = [],
+            offMeshConRad = [],
+            offMeshConDir = [],
+            offMeshConAreas = [],
+            offMeshConFlags = [],
+            offMeshConUserID = [],
+        });
+    }
+
     private FieldPet Pet(bool owned, int type = 1, float battleTrace = 5000, NpcMetadataDistance? sight = null) {
-        StartCaster(["Idle_A"]);
+        StartCaster(["Idle_A", "Run_A"]);
         Assert.That(Field.NpcMetadata.TryGet(CasterId, out NpcMetadata? metadata), Is.True);
         if (sight != null) {
             metadata = metadata! with { Distance = sight };
@@ -213,14 +249,16 @@ public class PetBattleTests : NpcCastFixture {
         Assert.That(test.Errors, Is.Empty);
     }
 
-    // A pet sees nothing below its own height (sightHeightDown 0). It trails its owner, and on a slope it stands above
-    // the monster by its owner: it takes the monster within its height window from its owner's height.
+    // Off the navmesh (map x 5000, beyond the fixture's floor) a pet sees nothing below its own height
+    // (sightHeightDown 0). It trails its owner, and on a slope it stands above the monster by its owner: it takes the
+    // monster within its height window from its owner's height.
     [TestCase(0f, true)]
     [TestCase(150f, false)]
-    public void ABattlePetAboveTheMonster_TakesItFromItsOwnersHeight(float ownerHeight, bool takes) {
+    public void ABattlePetAboveTheMonsterOffTheNavmesh_TakesItFromItsOwnersHeight(float ownerHeight, bool takes) {
         Pet(owned: true, sight: PetSight);
-        pet.Position = new Vector3(900, 0, 150);
-        test.Session.Player.Position = new Vector3(0, 0, ownerHeight);
+        npc.Position = new Vector3(6000, 0, 0);
+        pet.Position = new Vector3(5900, 0, 150);
+        test.Session.Player.Position = new Vector3(5000, 0, ownerHeight);
         Assert.That(Search(), takes ? Is.SameAs(npc) : Is.Null);
     }
 
@@ -271,12 +309,59 @@ public class PetBattleTests : NpcCastFixture {
         Assert.That(pet.Position.X, Is.EqualTo(900));
     }
 
-    // Below its owner (another floor) the pet keeps its own window: the owner's would show it monsters out of reach.
+    // Off the navmesh, below its owner (another floor) the pet keeps its own window: the owner's would show it
+    // monsters out of reach.
     [Test]
-    public void ABattlePetBelowItsOwner_DoesNotSeeFromItsOwnersHeight() {
+    public void ABattlePetBelowItsOwnerOffTheNavmesh_DoesNotSeeFromItsOwnersHeight() {
         Pet(owned: true, sight: PetSight);
-        pet.Position = new Vector3(900, 0, -400);
-        test.Session.Player.Position = Vector3.Zero;
+        npc.Position = new Vector3(6000, 0, 0);
+        pet.Position = new Vector3(5900, 0, -400);
+        test.Session.Player.Position = new Vector3(5000, 0, 0);
         Assert.That(Search(), Is.Null);
+    }
+
+    // On the navmesh a battle pet takes what it can walk to from its own floor or its owner's: on a ledge with no way
+    // down, it takes the monster a block below when its owner stands down there by the monster.
+    [Test]
+    public void ABattlePetOnALedge_TakesTheMonsterABlockBelowByItsOwner() {
+        ledge = true;
+        Pet(owned: true, sight: PetSight);
+        pet.Position = new Vector3(900, 0, 150);
+        test.Session.Player.Position = new Vector3(0, 0, 0);
+        Assert.That(Search(), Is.SameAs(npc));
+    }
+
+    // With its owner beside it on the ledge, no walk leads down to the monster: the pet does not drop (no height a pet
+    // may drop is known), so the monster is out of its reach.
+    [Test]
+    public void ABattlePetOnALedge_DoesNotTakeAMonsterBelowItCannotWalkTo() {
+        ledge = true;
+        Pet(owned: true, sight: PetSight);
+        pet.Position = new Vector3(900, 0, 150);
+        test.Session.Player.Position = new Vector3(600, 0, 150);
+        Assert.That(Search(), Is.Null);
+    }
+
+    // A monster on a ledge a block up that no floor links to is out of the pet's reach, though its height window
+    // (300 up) holds it.
+    [Test]
+    public void ABattlePetOnTheFloor_DoesNotTakeAMonsterOnALedgeItCannotClimb() {
+        ledge = true;
+        Pet(owned: true, sight: PetSight);
+        pet.Position = new Vector3(300, 0, 0);
+        npc.Position = new Vector3(1000, 0, 150);
+        Assert.That(Search(), Is.Null);
+    }
+
+    // The pet battle AI (Pet/AI_DefaultPetBattle.xml) has no target node: nothing in it changes the target, so a pet
+    // keeps the monster it fights while it can still take it, though its owner hits another one in its sight.
+    [Test]
+    public void ABattlePet_KeepsItsFight_WhenItsOwnerHitsAnotherMonster() {
+        Pet(owned: true, sight: PetSight);
+        Assert.That(Field.NpcMetadata.TryGet(CasterId, out NpcMetadata? metadata), Is.True);
+        FieldNpc other = Field.SpawnNpc(metadata!, new Vector3(1800, 0, 0), Vector3.Zero)!;
+        pet.BattleState.ForceTarget(npc);
+        other.RecordDamage(test.Session.Player, 10);
+        Assert.That(Search(), Is.SameAs(npc));
     }
 }

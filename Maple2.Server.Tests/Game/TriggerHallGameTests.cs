@@ -71,6 +71,11 @@ public class TriggerHallGameTests : TriggerTestBase {
             offMeshConFlags = [],
             offMeshConUserID = [],
         };
+        return MeshNavigation(option);
+    }
+
+    // A field navigation on the navmesh of the given polys.
+    internal static Navigation MeshNavigation(DtNavMeshCreateParams option) {
         DtMeshData data = DtNavMeshBuilder.CreateNavMeshData(option)!;
         var navMesh = new DtNavMesh();
         Assert.That(navMesh.Init(data, 6, 0).Succeeded(), Is.True);

@@ -46,6 +46,37 @@ public sealed class FieldPet : FieldNpc {
         float range = Metadata.Distance.BattleTrace;
         return range <= 0 || Vector2.DistanceSquared(new Vector2(position.X, position.Y), new Vector2(owner.Position.X, owner.Position.Y)) <= range * range;
     }
+
+    // Whether the pet can get to a spot on the navmesh: a walk over poly links joins the spot's floor to the pet's own
+    // floor or to its owner's (the pet follows its owner there). A drop off a ledge is no way there: neither the client
+    // nor the data gives a height a pet may drop. A spot on a floor no link reaches (a ledge a block up or down with no
+    // way around, another storey) is out of reach. Null when the pet or the spot stands off the navmesh.
+    public bool? Reaches(Vector3 spot) {
+        if (Field.Navigation == null || !Field.FindNearestPoly(spot, out long spotRef, out _) || spotRef == 0) {
+            return null;
+        }
+        int ownIsland = IslandUnder(Position, ref ownFloor);
+        if (ownIsland == 0) {
+            return null;
+        }
+        int island = Field.Navigation.Island(spotRef);
+        return ownIsland == island
+            || owner != null && owner.Field == Field && IslandUnder(owner.Position, ref ownerFloor) == island;
+    }
+
+    // The island of the floor under a position, kept while the position stays (one search asks it for every monster).
+    private (Vector3 At, int Island) ownFloor;
+    private (Vector3 At, int Island) ownerFloor;
+
+    private int IslandUnder(Vector3 position, ref (Vector3 At, int Island) cached) {
+        if (cached.Island != 0 && cached.At == position) {
+            return cached.Island;
+        }
+        int island = Field.FindNearestPoly(position, out long polyRef, out _) && polyRef != 0 ? Field.Navigation!.Island(polyRef) : 0;
+        cached = (position, island);
+        return island;
+    }
+
     public int SkinId { get; private set; }
 
     public readonly float Scale = 1f;

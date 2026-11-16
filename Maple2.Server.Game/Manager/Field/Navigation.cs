@@ -78,6 +78,26 @@ public sealed class Navigation : IDisposable {
         return ap;
     }
 
+    // The island of a poly: polys a walker gets between over poly links (AgentNavigation.LinkedPolys) share one.
+    // The navmesh does not change, so an island is labelled once, when one of its polys is first asked for. The links
+    // are taken both ways: the maps' navmeshes have no off-mesh (one-way) connections. One field thread asks.
+    private Dictionary<long, int>? islands;
+    private int islandCount;
+
+    public int Island(long polyRef) {
+        Dictionary<long, int> labels = LazyInitializer.EnsureInitialized(ref islands);
+        lock (labels) {
+            if (labels.TryGetValue(polyRef, out int island)) {
+                return island;
+            }
+            island = ++islandCount;
+            foreach (long linked in AgentNavigation.LinkedPolys(navMesh, polyRef)) {
+                labels[linked] = island;
+            }
+            return island;
+        }
+    }
+
     public void Dispose() {
 
     }
