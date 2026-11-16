@@ -522,6 +522,42 @@ public class StorageInventoryHandlerTests {
         Assert.That(Rows().Where(row => row.Owner != 0).Sum(row => row.Amount), Is.EqualTo(5));
     }
 
+    // A deposit is stored at once in every case, so a stop before the storage is closed (no close save) loses
+    // nothing and doubles nothing: the rows a login loads hold the deposited part in the storage (the account's) and
+    // the rest in the bag. Before, a part split off a stack waited at owner 0 for the close, and a session save in
+    // between had already stored the bag without it.
+    [TestCase(3)]
+    [TestCase(5)]
+    public void Deposit_StoredBeforeTheClose(int amount) {
+        GameSession session = Open();
+
+        Item(session, 0, stack.Uid, amount);
+
+        Assert.Multiple(() => {
+            Assert.That(Rows().Where(row => row.Owner == test.AccountId).Sum(row => row.Amount), Is.EqualTo(amount));
+            Assert.That(Rows().Where(row => row.Owner == test.CharacterId).Sum(row => row.Amount), Is.EqualTo(5 - amount));
+            Assert.That(Rows().Where(row => row.Owner != 0).Sum(row => row.Amount), Is.EqualTo(5));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // A deposit that takes a slot, whose write fails: it leaves the storage again and returns to the bag.
+    [Test]
+    public void Deposit_PlacedNotStored_ReturnsToTheBag() {
+        GameSession session = Open();
+        test.FailSave = context => context.ChangeTracker.Entries().Any(entry =>
+            entry.Entity is Maple2.Database.Model.Item item && item.OwnerId == test.AccountId && entry.State == Microsoft.EntityFrameworkCore.EntityState.Modified);
+
+        Item(session, 0, stack.Uid, 5);
+        test.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That((InBag(session), InStorage(session)), Is.EqualTo((5, 0)));
+            Assert.That(test.TakeSent().Select(Convert.ToHexString),
+                Does.Contain(Hex(StorageInventoryPacket.Error(Maple2.Model.Error.StorageInventoryError.s_store_err_code))));
+        });
+    }
+
     // The same deposit when the save fails: the storage's stack is put back and the two return to the bag.
     [Test]
     public void Deposit_UsedUpNotStored_ReturnsToTheBag() {

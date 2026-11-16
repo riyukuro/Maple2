@@ -114,7 +114,9 @@ public sealed class StorageManager : IDisposable {
                 amount -= remaining;
             }
 
-            if (!session.Item.Inventory.Remove(uid, out deposit, amount)) {
+            // A part split off a stack is the account's row from the split on (the split writes the stack lowered):
+            // a stop before the storage's write below finds it in the storage, not lost at owner 0.
+            if (!session.Item.Inventory.Remove(uid, out deposit, amount, splitOwner: session.AccountId)) {
                 return;
             }
 
@@ -122,7 +124,7 @@ public sealed class StorageManager : IDisposable {
             deposit.Slot = slot;
             deposit.Binding = storedBy;
             IList<(Item, int Added)> result = items.Add(deposit, true);
-            if (deposit.Amount <= 0 && !StoreUsedUp(deposit, bagBinding, result)) {
+            if (!StoreDeposit(deposit, bagBinding, result)) {
                 return;
             }
 
@@ -134,25 +136,30 @@ public sealed class StorageManager : IDisposable {
         }
     }
 
-    // A deposit used up in stored stacks takes no slot of its own: its row (the character's, when the whole bag stack
-    // went in) is written to owner 0 together with the stacks' new amounts, in one save. Before, the row stayed the
-    // character's and nothing wrote it again (the bag let go of it at the remove), so the next login loaded the
-    // deposited items into the bag while the storage held them too. A save that fails takes the stacks back and
-    // returns the deposit to the bag; false then.
-    private bool StoreUsedUp(Item deposit, ItemBinding? bagBinding, IList<(Item Item, int Added)> stacked) {
+    // A deposit's rows are written at once, in one save: the stored stacks it went into and its own row, at the
+    // account when it took a slot, at owner 0 when it was used up in the stacks. Before, a used-up deposit's row stayed
+    // the character's and nothing wrote it again (the bag let go of it at the remove), so the next login loaded the
+    // deposited items into the bag while the storage held them too; and the rest waited for the storage's close, so a
+    // stop after a session save had stored the bag without them lost what was put in. A save that fails takes the
+    // stacks back and returns the deposit to the bag; false then.
+    private bool StoreDeposit(Item deposit, ItemBinding? bagBinding, IList<(Item Item, int Added)> result) {
+        bool usedUp = deposit.Amount <= 0;
         using (GameStorage.Request db = session.GameStorage.Context()) {
-            if (db.SaveItems(session.AccountId, stacked.Select(result => result.Item).ToArray(), [deposit])) {
+            if (db.SaveItems(session.AccountId, result.Select(entry => entry.Item).ToArray(), usedUp ? [deposit] : [])) {
                 return true;
             }
         }
 
-        foreach ((Item stack, int added) in stacked) {
+        foreach ((Item stack, int added) in result.Where(entry => !ReferenceEquals(entry.Item, deposit))) {
             stack.Amount -= added;
             deposit.Amount += added;
         }
+        if (!usedUp) {
+            items.Remove(deposit.Uid, out _);
+        }
         deposit.Slot = -1;
         deposit.Binding = bagBinding;
-        Log.Error("Storage deposit {Uid} ({ItemId}) of {CharacterId}: the stacks it went into were not written", deposit.Uid, deposit.Id, session.CharacterId);
+        Log.Error("Storage deposit {Uid} ({ItemId}) of {CharacterId} not written", deposit.Uid, deposit.Id, session.CharacterId);
         if (!session.Item.AddOrMail(deposit, commit: true)) {
             Log.Error("Storage deposit {Uid} ({ItemId} x{Amount}) of {CharacterId} not returned", deposit.Uid, deposit.Id, deposit.Amount, session.CharacterId);
         }
