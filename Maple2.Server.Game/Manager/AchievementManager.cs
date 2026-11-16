@@ -138,6 +138,35 @@ public sealed class AchievementManager {
     /// the same way, interior_level the highest home decoration level, and fame_grade stays at 1 (each fame change
     /// reports every grade reached again). Other conditions add the count.
     /// </summary>
+    // The counter and the grades reached of each trophy of a condition type the player has, for PutBack.
+    public Dictionary<int, (long Counter, int Grades)> Mark(ConditionType conditionType) {
+        var mark = new Dictionary<int, (long Counter, int Grades)>();
+        foreach (AchievementMetadata metadata in session.AchievementMetadata.GetType(conditionType)) {
+            IDictionary<int, Achievement> achievements = metadata.AccountWide ? accountValues : characterValues;
+            if (achievements.TryGetValue(metadata.Id, out Achievement? achievement)) {
+                mark[metadata.Id] = (achievement.Counter, achievement.Grades.Count);
+            }
+        }
+        return mark;
+    }
+
+    // Puts the counters of a condition type back to a Mark (a trophy begun since goes back to 0). A trophy that
+    // reached a grade since keeps the grade and its counter.
+    public void PutBack(ConditionType conditionType, IReadOnlyDictionary<int, (long Counter, int Grades)> mark) {
+        foreach (AchievementMetadata metadata in session.AchievementMetadata.GetType(conditionType)) {
+            IDictionary<int, Achievement> achievements = metadata.AccountWide ? accountValues : characterValues;
+            if (!achievements.TryGetValue(metadata.Id, out Achievement? achievement)) {
+                continue;
+            }
+            (long counter, int grades) = mark.TryGetValue(metadata.Id, out (long Counter, int Grades) before) ? before : (0, 0);
+            if (achievement.Grades.Count != grades || achievement.Counter == counter) {
+                continue;
+            }
+            achievement.Counter = counter;
+            session.Send(AchievementPacket.Update(achievement));
+        }
+    }
+
     public static bool Advances(ConditionType conditionType, long counter, long count) {
         if (conditionType is ConditionType.interior_point) {
             return InteriorPointRules.Advances(counter, count);

@@ -456,6 +456,38 @@ public sealed class QuestManager {
         }
     }
 
+    // The counter of each condition of a type in the player's quests, with the quest's state and completions, for
+    // PutBack.
+    public Dictionary<(int Quest, int Condition), (int Counter, QuestState State, int Completions)> Mark(ConditionType type) {
+        var mark = new Dictionary<(int Quest, int Condition), (int Counter, QuestState State, int Completions)>();
+        foreach (Quest quest in characterValues.Values.Concat(accountValues.Values)) {
+            foreach ((int key, Quest.Condition condition) in quest.Conditions) {
+                if (condition.Metadata.Type == type) {
+                    mark[(quest.Id, key)] = (condition.Counter, quest.State, quest.CompletionCount);
+                }
+            }
+        }
+        return mark;
+    }
+
+    // Puts the conditions of a type back to a Mark. A quest completed, started or abandoned since is left as it is.
+    public void PutBack(ConditionType type, IReadOnlyDictionary<(int Quest, int Condition), (int Counter, QuestState State, int Completions)> mark) {
+        foreach (Quest quest in characterValues.Values.Concat(accountValues.Values)) {
+            bool changed = false;
+            foreach ((int key, Quest.Condition condition) in quest.Conditions) {
+                if (condition.Metadata.Type != type || !mark.TryGetValue((quest.Id, key), out var before)
+                    || before.State != quest.State || before.Completions != quest.CompletionCount || condition.Counter == before.Counter) {
+                    continue;
+                }
+                condition.Counter = before.Counter;
+                changed = true;
+            }
+            if (changed) {
+                session.Send(QuestPacket.Update(quest));
+            }
+        }
+    }
+
     // Quest sub-type 28: the player used the quest action on another player. Each user_find condition of the
     // started quest that is not full yet and that the found player meets goes up by one.
     public bool UpdateUserFind(int questId, in QuestRules.FoundUser user) {

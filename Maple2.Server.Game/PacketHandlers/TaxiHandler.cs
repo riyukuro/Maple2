@@ -201,8 +201,11 @@ public class TaxiHandler : FieldPacketHandler {
             return;
         }
 
-        // As RideForMeso: the merets are shown taken (and counted as spent) only for a change that went.
+        // As RideForMeso: the merets are shown taken (and counted as spent) only for a change that went. A move to
+        // another server undone after that (unpay) also puts the merets-spent count back (use_merat): before, the
+        // merets came back and the count stayed.
         bool kept = false, givenBack = false;
+        GameSession.ConditionMark? spent = null;
         void GiveBack() {
             if (givenBack) return;
             givenBack = true;
@@ -210,10 +213,15 @@ public class TaxiHandler : FieldPacketHandler {
         }
         bool prepared = session.PaidFieldChange(mapId, () => {
             kept = true;
+            spent = session.MarkCondition(ConditionType.use_merat);
             session.Currency.NotifyMeretTaken(price);
         }, unpay: () => {
             kept = false;
             GiveBack();
+            if (spent != null) {
+                session.PutBackCondition(spent);
+                spent = null;
+            }
         });
         if (!kept) {
             GiveBack();

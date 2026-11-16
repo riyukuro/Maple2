@@ -1258,6 +1258,22 @@ public sealed partial class GameSession : Core.Network.Session {
         EventConditionUpdate(conditionType, targetString, targetLong, codeString, codeLong);
     }
 
+    // The trophy and quest counters of a condition type as they are now, for PutBackCondition when what a count of
+    // it counted is undone (a paid move undone after its payment: the merets an air taxi took, use_merat). A grade or
+    // a quest completion reached since stays. The events' part of the count (EventConditionUpdate) is not put back:
+    // it counts no amount.
+    public ConditionMark MarkCondition(ConditionType type) => new(type, Achievement.Mark(type), Quest.Mark(type));
+
+    public void PutBackCondition(ConditionMark mark) {
+        Achievement.PutBack(mark.Type, mark.Trophies);
+        Quest.PutBack(mark.Type, mark.Quests);
+    }
+
+    public sealed record ConditionMark(
+        ConditionType Type,
+        IReadOnlyDictionary<int, (long Counter, int Grades)> Trophies,
+        IReadOnlyDictionary<(int Quest, int Condition), (int Counter, QuestState State, int Completions)> Quests);
+
     // The events' part of a condition alone (snowman, promotions, user condition events), for a report the trophies
     // and quests do not count again (a repeat gold medal of a fish species).
     public void EventConditionUpdate(ConditionType conditionType, string targetString = "", long targetLong = 0, string codeString = "", long codeLong = 0) {

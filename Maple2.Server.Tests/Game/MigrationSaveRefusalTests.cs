@@ -297,6 +297,42 @@ public class MigrationSaveRefusalTests {
         });
     }
 
+    // The merets-spent count (use_merat) a meret air taxi's pay made is put back when the move to another server is
+    // undone after it (TaxiHandler: MarkCondition before NotifyMeretTaken, PutBackCondition on unpay): the merets came
+    // back and the count stayed. A trophy the count took to a grade keeps it.
+    [Test]
+    public void Migrate_SecondSaveFails_MeretsSpentCountPutBack() {
+        const int Counting = 23200041, Begun = 23200042, Reached = 23200043;
+        var test = new TestGameSession();
+        test.AddAchievement(
+            TestGameSession.Trophy(Counting, ConditionType.use_merat, [100000]),
+            TestGameSession.Trophy(Reached, ConditionType.use_merat, [550, 100000]));
+        GameSession session = Closable(test);
+        Maple2.Model.Game.Quest quest = test.StartQuest(TestGameSession.QuestData(91000001) with {
+            Conditions = [new Maple2.Model.Metadata.ConditionMetadata(ConditionType.use_merat, 100000, null, null)],
+        });
+        session.Currency.ReportMeretSpent(-100);
+        // Begun by the pay's count (a trophy the player had no row of).
+        test.AddAchievement(TestGameSession.Trophy(Begun, ConditionType.use_merat, [100000]));
+        bool afterMove = false;
+        GameSession.ConditionMark? spent = null;
+        test.FailSave = _ => afterMove;
+
+        session.Migrate(Target, beforeMove: () => {
+            spent = session.MarkCondition(ConditionType.use_merat);
+            session.Currency.ReportMeretSpent(-500);
+            afterMove = true;
+        }, moveUndone: () => session.PutBackCondition(spent!));
+
+        Assert.Multiple(() => {
+            Assert.That(Ended(session), Is.True);
+            Assert.That(test.TrophyCounter(Counting), Is.EqualTo(100));
+            Assert.That(test.TrophyCounter(Begun), Is.EqualTo(0));
+            Assert.That(test.TrophyCounter(Reached), Is.EqualTo(600), "the grade reached stays, with its counter");
+            Assert.That(quest.Conditions[0].Counter, Is.EqualTo(100), "the quest's condition");
+        });
+    }
+
     // A move that went keeps the payment: moveUndone does not run.
     [Test]
     public void Migrate_PaidMoveThatWent_KeepsThePayment() {
