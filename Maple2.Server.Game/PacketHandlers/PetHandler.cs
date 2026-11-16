@@ -628,6 +628,7 @@ public class PetHandler : FieldPacketHandler {
             session.Pet.Load(summoned: true);
             // The pet's stats join the owner's totals.
             session.Player.Stats.Refresh();
+            fieldPet.AddPetEffects();
         }
     }
 }

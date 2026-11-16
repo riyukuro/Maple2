@@ -330,27 +330,36 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
 
     }
 
-    public virtual IActor GetTarget(SkillTargetType targetType, IActor caster, IActor target, IActor owner) {
+    // PetOwner (4): the player who summoned the pet that cast it, as the pet effects' event skills want (KR: 10 of
+    // the 18 pet effects, 61100010 gives its owner 61100011 on the pet's hits). The client only loads skillTarget and
+    // skillOwner (additionalactionadditional.cpp:596-599) and resolves neither, so the rule is the server's. A wild
+    // pet or any other caster has no pet owner: the effect is not given (null).
+    public virtual IActor? GetTarget(SkillTargetType targetType, IActor caster, IActor target, IActor owner) {
         return targetType switch {
             SkillTargetType.Owner => owner,
             SkillTargetType.Target => target,
             SkillTargetType.Caster => caster,
+            SkillTargetType.PetOwner => PetOwner(caster),
             SkillTargetType.None => this, // Should be on self/inherit
             SkillTargetType.Attacker => target,
             _ => throw new NotImplementedException(),
         };
     }
 
-    public IActor GetOwner(SkillTargetType targetType, IActor caster, IActor target, IActor owner) {
+    public IActor? GetOwner(SkillTargetType targetType, IActor caster, IActor target, IActor owner) {
         return targetType switch {
             SkillTargetType.Owner => owner,
             SkillTargetType.Target => owner,
             SkillTargetType.Caster => caster,
+            SkillTargetType.PetOwner => PetOwner(caster),
             SkillTargetType.None => this, // Should be on self/inherit
             SkillTargetType.Attacker => target,
             _ => throw new NotImplementedException(),
         };
     }
+
+    private static IActor? PetOwner(IActor caster) =>
+        caster is FieldPet { OwnerPlayer: { } player } pet && player.Field == pet.Field ? player : null;
 
     /// <summary>
     /// Filter effects before applying. This is needed instead of applying as iterating to ensure the current state of the actor is used.
@@ -366,8 +375,11 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
                     ? SkillCastRules.TargetCountFactor(Field.ServerTableMetadata.ConstantsTable, targets.Length)
                     : 1f;
                 foreach (IActor target in targets) {
-                    IActor resultOwner = GetTarget(effect.Condition!.Target, caster, target, owner);
-                    IActor resultCaster = GetOwner(effect.Condition.Owner, caster, target, owner);
+                    IActor? resultOwner = GetTarget(effect.Condition!.Target, caster, target, owner);
+                    IActor? resultCaster = GetOwner(effect.Condition.Owner, caster, target, owner);
+                    if (resultOwner == null || resultCaster == null) {
+                        continue;
+                    }
                     if (effect.Condition.Condition.Check(resultCaster, resultOwner, target, type, skillId, buffId, ownedBy, factor)) {
                         appliedEffects.Add((resultOwner, resultCaster, effect));
                     }
@@ -403,8 +415,11 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
                     ? SkillCastRules.TargetCountFactor(Field.ServerTableMetadata.ConstantsTable, damaged)
                     : 1f;
                 foreach (IActor target in targets) {
-                    IActor resultOwner = GetTarget(effect.Condition!.Target, caster, target, caster);
-                    IActor resultCaster = GetOwner(effect.Condition.Owner, caster, target, caster);
+                    IActor? resultOwner = GetTarget(effect.Condition!.Target, caster, target, caster);
+                    IActor? resultCaster = GetOwner(effect.Condition.Owner, caster, target, caster);
+                    if (resultOwner == null || resultCaster == null) {
+                        continue;
+                    }
                     if (effect.Condition.Condition.Check(resultCaster, resultOwner, target, eventSkillId: record.SkillId, probabilityFactor: factor) &&
                         SkillCastRules.DealtDamage(record, target)) {
                         appliedEffects.Add((resultOwner, resultCaster, effect));

@@ -24,6 +24,8 @@ public sealed class FieldPet : FieldNpc {
     public readonly PetMetadata Metadata;
 
     public int OwnerId => owner?.ObjectId ?? 0;
+    // The player who summoned the pet; null for a wild pet.
+    public FieldPlayer? OwnerPlayer => owner;
     public int SkinId { get; private set; }
 
     public readonly float Scale = 1f;
@@ -106,6 +108,19 @@ public sealed class FieldPet : FieldNpc {
 
     public override void Update(long tickCount) {
         base.Update(tickCount);
+    }
+
+    // A summoned pet holds its pet effects (the pet's <effect> rows: KR 18 pets, one each, e.g. 61100010) while it is
+    // out. They are event effects: each fires on the pet's own landed hits (OnOwnerAttackHit) and gives the hit target
+    // a debuff or the owner a buff (PetOwner). The client applies none of them itself (no reader of the pet's effect
+    // list), so the server holds them and sends their buffs. A wild pet gets none.
+    public void AddPetEffects() {
+        if (owner == null) {
+            return;
+        }
+        foreach (PetMetadataEffect effect in Metadata.Effect) {
+            Buffs.AddBuff(this, this, effect.Id, effect.Level, Field.FieldTick);
+        }
     }
 
     public override void ApplyDamage(IActor caster, DamageRecord damage, SkillMetadataAttack attack) {
