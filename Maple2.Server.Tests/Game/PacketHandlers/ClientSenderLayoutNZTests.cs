@@ -375,4 +375,54 @@ public class ClientSenderLayoutNZTests {
         // Modes 2 and 3 read their ids only while riding or in reach of another rider: compared by reading.
         ReadsAll(handler, w => { w.WriteByte(6); w.WriteByte(1); });
     }
+
+    private static void Cell(ByteWriter w) => w.WriteInt(0x010203);
+
+    private static void HeldCube(ByteWriter w) {
+        w.WriteInt(1);      // item id
+        w.WriteLong(1);     // instance id
+        w.WriteLong(1);     // count
+        w.WriteByte(0);     // no look
+    }
+
+    // RequestCube, every mode the client sends (cubecraft_2.cpp, uihome*.cpp, uirealestate*.cpp, uiugccube*.cpp,
+    // unit_140fa9eb0_uihomesaveslotdialog.cpp and the others named in the report): the cell is the client's packed 4 byte
+    // key, a cube is CubeItemInfo (FUN_1408b39c0: item id, instance id, count, look flag), a name is a unicode string.
+    // Modes 35, 47, 48 (layout slot or cube id), 51, 52, 54 (background, lighting, camera byte), 65 (blueprint slot) and 66 (blueprint
+    // uid and a flag the server does not read) are read only after the home and permission checks the test session cannot
+    // pass: compared by reading, not run.
+    [Test]
+    public void RequestCube_Modes() {
+        var handler = new RequestCubeHandler { TableMetadata = test.TableMetadata };
+        ReadsAll(handler, w => { w.WriteByte(0); w.WriteInt(0); });                                // build state (cubecraft_2.cpp:317)
+        ReadsAll(handler, w => { w.WriteByte(2); w.WriteInt(1); w.WriteInt(1); });                 // buy plot (uirealestatedialog.cpp:420)
+        ReadsAll(handler, w => w.WriteByte(6));                                                    // forfeit (uirealestatesell.cpp:255)
+        ReadsAll(handler, w => w.WriteByte(9));                                                    // extend (uirealestatedialog.cpp:478)
+        ReadsAll(handler, w => { w.WriteByte(10); Cell(w); HeldCube(w); w.WriteFloat(0); });        // place cube (cubecraft_2.cpp:998)
+        ReadsAll(handler, w => { w.WriteByte(11); Cell(w); HeldCube(w); w.WriteFloat(0); w.WriteByte(0); }); // place attached (1302)
+        ReadsAll(handler, w => { w.WriteByte(12); Cell(w); });                                      // remove cube (1161)
+        ReadsAll(handler, w => { w.WriteByte(13); Cell(w); });                                      // remove cube 13 (1149)
+        ReadsAll(handler, w => { w.WriteByte(14); Cell(w); w.WriteBool(false); });                  // rotate (1098)
+        ReadsAll(handler, w => { w.WriteByte(15); Cell(w); HeldCube(w); w.WriteFloat(0); });        // replace (1028)
+        ReadsAll(handler, w => { w.WriteByte(16); Cell(w); HeldCube(w); w.WriteFloat(0); w.WriteByte(0); }); // replace attached (1313)
+        ReadsAll(handler, w => { w.WriteByte(17); Cell(w); });                                      // liftup (actionkeyobject.cpp:1943)
+        ReadsAll(handler, w => w.WriteByte(18));                                                    // liftup drop (pc.cpp:1934)
+        ReadsAll(handler, w => { w.WriteByte(21); w.WriteUnicodeString("home"); });                // home name (uihomeinfoeditdialog.cpp:193)
+        ReadsAll(handler, w => { w.WriteByte(24); w.WriteByte(0); w.WriteUnicodeString("pw"); });   // passcode (uihomepassworddialog.cpp:207)
+        ReadsAll(handler, w => w.WriteByte(25));                                                    // vote (uimessagebox.cpp:1484)
+        ReadsAll(handler, w => { w.WriteByte(29); w.WriteUnicodeString("message"); });             // message (uihomeinfoeditdialog.cpp:209)
+        ReadsAll(handler, w => { w.WriteByte(30); w.WriteUnicodeString("id"); w.WriteUnicodeString("text"); }); // summon
+        ReadsAll(handler, w => w.WriteByte(31));                                                    // clear (uihomemenudialog.cpp:769)
+        foreach (byte mode in new byte[] { 37, 38, 40, 44, 45, 49, 63 }) {
+            byte sent = mode;
+            ReadsAll(handler, w => w.WriteByte(sent));                                              // area, height, check in, kick, blueprint
+        }
+        ReadsAll(handler, w => { w.WriteByte(41); w.WriteByte(0); });                               // interior reward (uimasterydialog.cpp:516)
+        ReadsAll(handler, w => { w.WriteByte(42); w.WriteByte(0); w.WriteBool(true); });            // permission on (uihomeoptiondialog.cpp:256)
+        ReadsAll(handler, w => { w.WriteByte(43); w.WriteByte(0); w.WriteByte(0); });               // permission level (267)
+        ReadsAll(handler, w => { w.WriteByte(46); w.WriteInt(1); w.WriteUnicodeString("slot"); });  // save layout
+        ReadsAll(handler, w => { w.WriteByte(64); w.WriteInt(1); w.WriteUnicodeString("bp"); });    // save blueprint
+        ReadsAll(handler, w => { w.WriteByte(68); w.WriteLong(1); });                               // preview
+        ReadsAll(handler, w => { w.WriteByte(70); w.WriteLong(1); });                               // apply
+    }
 }
