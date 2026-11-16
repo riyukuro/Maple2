@@ -1,4 +1,6 @@
 using System;
+using System.Runtime.CompilerServices;
+using Maple2.Database.Storage;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.PacketHandlers;
 using Maple2.Server.Game.PacketHandlers;
@@ -21,12 +23,13 @@ public class ClientSenderLayoutNZTests {
 
     private void ReadsAll(PacketHandler<GameSession> handler, Action<ByteWriter> client) {
         ByteReader packet = TestGameSession.Packet(client);
+        byte first = packet.Available > 0 ? packet.Peek<byte>() : (byte) 255;
         try {
             handler.Handle(test.Session, packet);
         } catch (Exception) {
             // The side effect, not the read.
         }
-        Assert.That(packet.Available, Is.EqualTo(0));
+        Assert.That(packet.Available, Is.EqualTo(0), "first byte " + first);
     }
 
     // webbrowserservice.cpp:361 (0, the command, an int) and 376 (0, 0, 0): the token request.
@@ -199,5 +202,70 @@ public class ClientSenderLayoutNZTests {
             w.WriteString("host");
             w.WriteInt(1);
         });
+    }
+
+    private static T Bare<T>() => (T) RuntimeHelpers.GetUninitializedObject(typeof(T));
+
+    // FUN_1401fa700 (unit_1401f9eb0_packetpayloadserializers.cpp:416), sent from FUN_141276f80 and the commands
+    // (uimeratmarketdialog.cpp:4559): the chat kind as an int, the text, the target, the club id.
+    [Test]
+    public void UserChat_TheChatPayload() {
+        var handler = new UserChatHandler { World = test.World, GameStorage = test.Storage, ServerTableMetadata = test.ServerTableMetadata };
+        ReadsAll(handler, w => { w.WriteInt(0); w.WriteUnicodeString("text"); w.WriteUnicodeString(""); w.WriteLong(0); });
+        ReadsAll(handler, w => { w.WriteInt(0); w.WriteUnicodeString("/command"); w.WriteUnicodeString(""); w.WriteLong(0); });
+    }
+
+    // state.cpp:490 (UserSync) and 546 (RideSync): a flag byte, the server tick, the client tick, a record count, and per
+    // record the StateSyncObject record (statesyncobject.cpp:113-262) and the client tick, as StateSync.ReadFrom and
+    // GuideObjectSyncHandler.ReadRecords read them. Both handlers return before reading for a session that is not in
+    // the Connected state, so this was compared by reading, not run.
+
+    // Quest (the sites of questmanager_2.cpp, cinematiccomponent.cpp, uiquestdialog.cpp, questmanager_1.cpp): 2 quest and npc
+    // (581), 4 quest, npc and the choice (642, always 0), 6 quest (1813), 7 count and ids, 8 count and ids (2173, 2206), 9 quest
+    // and the state byte (219), 12 13 19 quest (1438-1464), 14 (1752), 15 id (1780), 16 id (uilearningquestdialog.cpp:179), 17
+    // (uigamemenudialog.cpp:2298), 18 quest (611), 20 id and a short (1800), 24 27 29 39 26 quest or round, 28 id and the
+    // target (actionkeyobject.cpp:3038), 33 quest, 34 and 35 (uialliancequestdialog.cpp:685, 697, 710).
+    [Test]
+    public void Quest_Modes() {
+        var handler = new QuestHandler { TableMetadata = test.TableMetadata, ServerTableMetadata = test.ServerTableMetadata };
+        ReadsAll(handler, w => { w.WriteByte(2); w.WriteInt(1); w.WriteInt(1); });
+        // Mode 4 (quest, npc, the choice always 0) reads the npc only after a lookup the test session cannot pass:
+        // compared by reading.
+        ReadsAll(handler, w => { w.WriteByte(6); w.WriteInt(1); });
+        ReadsAll(handler, w => { w.WriteByte(7); w.WriteInt(1); w.WriteInt(1); });
+        ReadsAll(handler, w => { w.WriteByte(8); w.WriteInt(1); w.WriteInt(1); });
+        ReadsAll(handler, w => { w.WriteByte(9); w.WriteInt(1); w.WriteByte(1); });
+        foreach (byte mode in new byte[] { 12, 13, 18, 19, 24, 26, 27, 29, 33, 39 }) {
+            byte sent = mode;
+            ReadsAll(handler, w => { w.WriteByte(sent); w.WriteInt(1); });
+        }
+        ReadsAll(handler, w => { w.WriteByte(14); });
+        ReadsAll(handler, w => { w.WriteByte(15); w.WriteInt(1); });
+        ReadsAll(handler, w => { w.WriteByte(16); w.WriteInt(1); });
+        ReadsAll(handler, w => { w.WriteByte(17); });
+        ReadsAll(handler, w => { w.WriteByte(20); w.WriteInt(1); w.WriteShort(1); });
+        ReadsAll(handler, w => { w.WriteByte(28); w.WriteInt(1); w.WriteLong(1); });
+        ReadsAll(handler, w => w.WriteByte(34));
+        ReadsAll(handler, w => w.WriteByte(35));
+    }
+
+    // NpcTalk (cinematiccomponent.cpp:588, 649, 754, uitalkcinematic.cpp:1432-1676, uiitemenchantdialog.cpp:409-746,
+    // uialliancequestdialog.cpp:296-329): 0, 1 and 2 the npc or the pick as an int, 4 the event as a short (the retry adds the
+    // item uid, not read), 6 npc, an int, the event short, 7 and 8 quest and a short, 9, 11 npc and the pick.
+    [Test]
+    public void NpcTalk_Modes() {
+        var handler = new NpcTalkHandler {
+            NpcMetadata = Bare<NpcMetadataStorage>(),
+            ScriptMetadata = Bare<ScriptMetadataStorage>(),
+            ServerTableMetadata = test.ServerTableMetadata,
+        };
+        ReadsAll(handler, w => w.WriteByte(0));
+        ReadsAll(handler, w => { w.WriteByte(1); w.WriteInt(1); });
+        // Mode 2 (the pick) is read only inside an open talk: compared by reading.
+        ReadsAll(handler, w => { w.WriteByte(4); w.WriteShort(3); });
+        ReadsAll(handler, w => { w.WriteByte(6); w.WriteInt(1); w.WriteInt(1); w.WriteShort(3); });
+        // Modes 7 and 8 (quest, short) are read only for a quest the open talk offers: compared by reading.
+        ReadsAll(handler, w => w.WriteByte(9));
+        ReadsAll(handler, w => { w.WriteByte(11); w.WriteInt(1); w.WriteInt(1); });
     }
 }
