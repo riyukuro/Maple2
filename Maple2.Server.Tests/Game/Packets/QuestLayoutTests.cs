@@ -1,13 +1,19 @@
-using System;
+﻿using System;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using System.Collections.Generic;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using Maple2.Model.Error;
+using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 
 namespace Maple2.Server.Tests.Game.Packets;
 
 // The Quest packet against the client's reader, CQuestManager::OnQuest (questmanager_2.cpp:942): each writer's bytes
-// in the order and widths the client reads them. Error, SummonPortal and the alliance modes have their own tests.
+// in the order and widths the client reads them. SummonPortal and the alliance modes have their own tests.
 public class QuestLayoutTests {
     private static byte[] Body(ByteWriter writer) => writer.Buffer.AsSpan(2, writer.Length - 2).ToArray();
 
@@ -87,5 +93,24 @@ public class QuestLayoutTests {
             Assert.That(Body(QuestPacket.FieldQuestReset()), Is.EqualTo(new byte[] { 0x1E }));
             Assert.That(Body(QuestPacket.WeddingMissionReset()), Is.EqualTo(new byte[] { 0x26 }));
         });
+    }
+
+    // Mode 0 (:946): int error code (ShowQuestErrorMessage). Mode 1 (:1030): int npc object id, int count, count int
+    // quest ids.
+    [Test]
+    public void ErrorAndTalk() {
+        Assert.That(Body(QuestPacket.Error(QuestError.s_quest_error_inventory_full)), Is.EqualTo(new byte[] { 0x00, 0x01, 0, 0, 0 }));
+
+        var npc = (FieldNpc) RuntimeHelpers.GetUninitializedObject(typeof(FieldNpc));
+        Type? type = typeof(FieldNpc);
+        FieldInfo? objectId = null;
+        for (; type != null && objectId == null; type = type.BaseType) {
+            objectId = type.GetField("<ObjectId>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+        }
+        objectId!.SetValue(npc, 0x0A0B0C0D);
+        QuestMetadata[] quests = [TestGameSession.QuestData(7), TestGameSession.QuestData(9)];
+        Assert.That(Body(QuestPacket.Talk(npc, quests)), Is.EqualTo(new byte[] {
+            0x01, 0x0D, 0x0C, 0x0B, 0x0A, 0x02, 0, 0, 0, 0x07, 0, 0, 0, 0x09, 0, 0, 0,
+        }));
     }
 }
