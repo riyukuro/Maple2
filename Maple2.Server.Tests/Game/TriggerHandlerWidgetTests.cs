@@ -66,4 +66,19 @@ public class TriggerHandlerWidgetTests {
         Assert.DoesNotThrow(() => Send(22, 1, 0, 0, 0));
         Assert.That(test.TakeSent(), Is.Empty);
     }
+
+    // The trigger editor's save (13) as UITriggerEditorDialog writes it: the cube id, then the script as an A-string
+    // (under 10000 characters). It is read whole and answered with nothing; the server keeps no cube scripts.
+    [Test]
+    public void TheCubeScriptSave_IsReadWhole() {
+        var packet = TestGameSession.Packet(writer => {
+            writer.WriteByte(13);
+            writer.WriteInt(1048577);
+            writer.WriteString("<ms2><state name=\"a\" /></ms2>");
+        });
+
+        Assert.DoesNotThrow(() => new TriggerHandler().Handle(test.Session, packet));
+        Assert.That(packet.Available, Is.EqualTo(0));
+        Assert.That(test.TakeSent(), Is.Empty);
+    }
 }

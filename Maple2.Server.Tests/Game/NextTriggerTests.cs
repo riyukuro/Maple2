@@ -2,9 +2,11 @@ using System.Collections.Concurrent;
 using System.Numerics;
 using System.Reflection;
 using System.Xml;
+using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
+using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Tests.Game;
@@ -91,6 +93,72 @@ public class NextTriggerTests {
             Step(trigger);
         }
         Assert.That(field.UserValues.Get(TriggerId, "first"), Is.EqualTo(0));
+        Assert.That(field.UserValues.Get(TriggerId, "b"), Is.EqualTo(0));
+    }
+
+    private static void Send(TestGameSession test, byte command) =>
+        new TriggerHandler().Handle(test.Session, TestGameSession.Packet(writer => writer.WriteByte(command)));
+
+    // Trigger 0x04 as the client sends it (a bare mode byte): from a GM, every trigger of the field moves on.
+    [Test]
+    public void NextTriggerKey_FromAGm_MovesTheTriggerOn() {
+        var test = new TestGameSession();
+        test.Start();
+        (FieldManager field, FieldTrigger trigger) = Setup(test);
+        test.Session.Player.AdminPermissions = AdminPermissions.GameMaster;
+        Step(trigger);
+
+        Send(test, 4);
+        Step(trigger);
+
+        Assert.That(field.UserValues.Get(TriggerId, "first"), Is.EqualTo(1));
+    }
+
+    // The key is bound for every player; from anyone else it is dropped and the trigger stays.
+    [Test]
+    public void NextTriggerKey_FromAPlayer_IsDropped() {
+        var test = new TestGameSession();
+        test.Start();
+        (FieldManager field, FieldTrigger trigger) = Setup(test);
+        Step(trigger);
+
+        Send(test, 4);
+        Step(trigger);
+        Step(trigger);
+
+        Assert.That(field.UserValues.Get(TriggerId, "first"), Is.EqualTo(0));
+        Assert.That(field.UserValues.Get(TriggerId, "b"), Is.EqualTo(0));
+    }
+
+    // Trigger 0x08, the cutscene skip (a bare mode byte): the trigger goes to the state its set_skip named.
+    [Test]
+    public void SkipCutscene_GoesToTheSkipState() {
+        var test = new TestGameSession();
+        test.Start();
+        (FieldManager field, FieldTrigger trigger) = Setup(test);
+        Step(trigger);
+        trigger.Context.SetSkip("b");
+
+        Send(test, 8);
+        Step(trigger);
+        Step(trigger);
+
+        Assert.That(field.UserValues.Get(TriggerId, "b"), Is.EqualTo(1));
+        Assert.That(field.UserValues.Get(TriggerId, "first"), Is.EqualTo(0));
+    }
+
+    // Without a skip state the skip does nothing.
+    [Test]
+    public void SkipCutscene_WithoutASkipState_ChangesNothing() {
+        var test = new TestGameSession();
+        test.Start();
+        (FieldManager field, FieldTrigger trigger) = Setup(test);
+        Step(trigger);
+
+        Send(test, 8);
+        Step(trigger);
+        Step(trigger);
+
         Assert.That(field.UserValues.Get(TriggerId, "b"), Is.EqualTo(0));
     }
 }

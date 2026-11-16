@@ -111,4 +111,23 @@ public class BonusGameOfferTests {
             Assert.That(BonusGameHandler.OfferedGame("JobChangeDialog", "6"), Is.Null);
         });
     }
+
+    // BonusGame 3 as UIRouletteDialog sends it after the last spin's result (a bare mode byte): the game ended at the
+    // spin, so the close changes nothing and sends nothing.
+    [Test]
+    public void Close_ChangesNothing() {
+        var test = new TestGameSession();
+        test.SetServerTable(Table());
+        GameSession session = test.Start();
+        session.BonusGameOffered = 6;
+        session.BonusGameId = 6;
+        test.TakeSent();
+
+        new BonusGameHandler { TableMetadata = null!, ServerTableMetadata = test.ServerTableMetadata }.Handle(session,
+            TestGameSession.Packet(writer => writer.WriteByte(3)));
+
+        Assert.That(session.BonusGameId, Is.EqualTo(6));
+        Assert.That(session.BonusGameOffered, Is.EqualTo(6));
+        Assert.That(test.TakeSent(), Is.Empty);
+    }
 }

@@ -174,4 +174,51 @@ public class DungeonRoomHandlerTests {
 
         Assert.That(test.TakeSent(), Is.Empty);
     }
+
+    // The chaos raid (4), reverse raid (12) and colosseum (13) hall buttons, a bare mode byte each
+    // (UIDungeonSearchDialog::OnLoadComplete): pressed on the hall's own map, the client's already-there text (Error 18
+    // with the code, arg 0); inside a dungeon room, its can't-enter-in-dungeon text (16). Neither moves the player.
+    [TestCase((byte) 4, 63000047, 13)]
+    [TestCase((byte) 12, 63000054, 13)]
+    [TestCase((byte) 13, 83000001, 15)]
+    public void HallLobby_OnTheHallsMapIsRefused(byte mode, int hall, int code) {
+        Setup();
+        SetHalls(hall);
+        test.EnterMap(TestGameSession.Map(hall));
+
+        handler.Handle(test.Session, TestGameSession.Packet(writer => writer.WriteByte(mode)));
+
+        Assert.That(test.TakeSent().Single(), Is.EqualTo(HallError(code)));
+        Assert.That(test.Session.Field!.MapId, Is.EqualTo(hall));
+    }
+
+    [TestCase((byte) 4, 63000047)]
+    [TestCase((byte) 12, 63000054)]
+    [TestCase((byte) 13, 83000001)]
+    public void HallLobby_InsideADungeonIsRefused(byte mode, int hall) {
+        Setup();
+        SetHalls(hall);
+        test.EnterDungeon(TestGameSession.DungeonRoom(Room, 50000016));
+
+        handler.Handle(test.Session, TestGameSession.Packet(writer => writer.WriteByte(mode)));
+
+        Assert.That(test.TakeSent().Single(), Is.EqualTo(HallError(16)));
+        Assert.That(test.Session.Field!.MapId, Is.EqualTo(50000016));
+    }
+
+    private void SetHalls(int hall) {
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with {
+            ChaosDungeonHallFieldID = 63000047,
+            ReverseRaidDungeonHallFieldID = 63000054,
+            ColosseumDungeonHallFieldID = 83000001,
+        });
+        test.AddMap(TestGameSession.Map(hall));
+    }
+
+    private static byte[] HallError(int code) {
+        var bytes = new List<byte> { 0x1A, 0x00, 18 };
+        bytes.AddRange(System.BitConverter.GetBytes(code));
+        bytes.AddRange(System.BitConverter.GetBytes(0));
+        return bytes.ToArray();
+    }
 }
