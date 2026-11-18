@@ -50,7 +50,8 @@ After you pull an update:
 
 The servers listen on loopback (127.0.0.1) only, unlike upstream. To serve other machines, set `MS2_BIND_IP`
 (`0.0.0.0` for all interfaces) together with upstream's `GAME_IP` and `LOGIN_IP`. The server has no hardening for the
-open internet beyond upstream's.
+open internet beyond upstream's. With `docker compose`, the servers bind all interfaces inside their containers (so they
+reach each other), and `MS2_BIND_IP` in `.env` is the host address their ports are published on, loopback when unset.
 
 ## Operator settings
 

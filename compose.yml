@@ -1,3 +1,6 @@
+# Each server binds MS2_BIND_IP inside its container: 0.0.0.0 here, so the other containers (gRPC) and the published
+# ports reach it (a server on the container's loopback, the default outside docker, is reachable by neither). The host
+# side of the published ports is MS2_BIND_IP from .env, loopback when unset, as outside docker.
 services:
   # One-shot DB migration + metadata ingestion. Runs manually, not with the stack.
   #   docker compose --profile ingest run --rm file-ingest
@@ -40,12 +43,13 @@ services:
       world:
         condition: service_healthy
     ports:
-      - 20001:20001
+      - "${MS2_BIND_IP:-127.0.0.1}:20001:20001"
     env_file:
       - .env
     environment:
       DB_IP: mysql
       GRPC_WORLD_IP: world
+      MS2_BIND_IP: 0.0.0.0
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/21000"]
       interval: 10s
@@ -64,12 +68,13 @@ services:
       mysql:
         condition: service_healthy
     ports:
-      - 21001:21001
+      - "${MS2_BIND_IP:-127.0.0.1}:21001:21001"
     env_file:
       - .env
     environment:
       DB_IP: mysql
       GRPC_LOGIN_IP: login
+      MS2_BIND_IP: 0.0.0.0
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/21001"]
       interval: 10s
@@ -90,14 +95,15 @@ services:
         condition: service_healthy
     # Ports are dynamically assigned from world server, sadly we can't dynamically expose them here. So we have to hardcode them.
     ports:
-      - 20003:20003
-      - 21003:21003
+      - "${MS2_BIND_IP:-127.0.0.1}:20003:20003"
+      - "${MS2_BIND_IP:-127.0.0.1}:21003:21003"
     env_file:
       - .env
     environment:
       DB_IP: mysql
       GRPC_GAME_IP: game-ch1
       GRPC_WORLD_IP: world
+      MS2_BIND_IP: 0.0.0.0
 
   game-ch2:
     build:
@@ -112,14 +118,15 @@ services:
         condition: service_healthy
     # Ports are dynamically assigned from world server, sadly we can't dynamically expose them here. So we have to hardcode them.
     ports:
-      - 20004:20004
-      - 21004:21004
+      - "${MS2_BIND_IP:-127.0.0.1}:20004:20004"
+      - "${MS2_BIND_IP:-127.0.0.1}:21004:21004"
     env_file:
       - .env
     environment:
       DB_IP: mysql
       GRPC_GAME_IP: game-ch2
       GRPC_WORLD_IP: world
+      MS2_BIND_IP: 0.0.0.0
 
   # Channel 0 is instanced content only
   game-ch0:
@@ -135,14 +142,15 @@ services:
         condition: service_healthy
     # Ports are dynamically assigned from world server, sadly we can't dynamically expose them here. So we have to hardcode them.
     ports:
-      - 20002:20002
-      - 21002:21002
+      - "${MS2_BIND_IP:-127.0.0.1}:20002:20002"
+      - "${MS2_BIND_IP:-127.0.0.1}:21002:21002"
     env_file:
       - .env
     environment:
       DB_IP: mysql
       GRPC_GAME_IP: game-ch0
       GRPC_WORLD_IP: world
+      MS2_BIND_IP: 0.0.0.0
       INSTANCED_CONTENT: true
 
   web:
@@ -156,11 +164,13 @@ services:
       mysql:
         condition: service_healthy
     ports:
-      - "${WEB_PORT:-4000}:${WEB_PORT:-4000}"
+      - "${MS2_BIND_IP:-127.0.0.1}:${WEB_PORT:-4000}:${WEB_PORT:-4000}"
     env_file:
       - .env
     environment:
       DB_IP: mysql
+      GRPC_LOGIN_IP: login
+      MS2_BIND_IP: 0.0.0.0
 
   mysql:
     image: mysql:8.0
