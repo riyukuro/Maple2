@@ -726,14 +726,16 @@ public class UgcHandler : FieldPacketHandler {
             Logger.Warning("Refused profile picture path from {CharacterId}", session.CharacterId);
             return;
         }
-        session.Player.Value.Character.Picture = path;
         // Stored at once, not with the character's next save: the web server keeps the file of the stored path when
-        // the next picture is uploaded (WebController.KeepCurrentProfile) and deletes the others.
+        // the next picture is uploaded (WebController.KeepCurrentProfile) and deletes the others. The session takes the
+        // path only once it is stored, so its next save never names a file the web server may have deleted.
         using (GameStorage.Request db = session.GameStorage.Context()) {
             if (!db.SetCharacterPicture(session.CharacterId, session.AccountId, path, session.Player.Value.Character)) {
                 Logger.Warning("Profile picture of {CharacterId} not stored", session.CharacterId);
+                return;
             }
         }
+        session.Player.Value.Character.Picture = path;
 
         session.ConditionUpdate(ConditionType.change_profile);
         session.Field?.Broadcast(UgcPacket.ProfilePicture(session.Player));

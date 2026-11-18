@@ -59,6 +59,18 @@ public class UgcSmallCommandTests {
         Assert.That(db.GetCharacterPicture(session.CharacterId), Is.EqualTo(path));
     }
 
+    // A picture the db did not take is not shown either: the session keeps the stored path.
+    [Test]
+    public void ProfilePicture_NotStored_NotTaken() {
+        string before = session.Player.Value.Character.Picture;
+        using (var context = new Maple2.Database.Context.Ms2Context(test.Options)) {
+            context.Character.Find(session.CharacterId)!.AccountId = session.AccountId + 1;
+            context.SaveChanges();
+        }
+        Picture(Own("abc-124"));
+        Assert.That(session.Player.Value.Character.Picture, Is.EqualTo(before));
+    }
+
     [TestCase("data/profiles/avatar/987654/other.png")] // another character's folder
     [TestCase("data/profiles/wedding/{id}/x.png")] // the wedding folder
     [TestCase("data/profiles/avatar/{id}/x.jpg")]

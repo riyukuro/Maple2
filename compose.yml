@@ -1,6 +1,7 @@
 # Each server binds MS2_BIND_IP inside its container: 0.0.0.0 here, so the other containers (gRPC) and the published
 # ports reach it (a server on the container's loopback, the default outside docker, is reachable by neither). The host
-# side of the published ports is MS2_BIND_IP from .env, loopback when unset, as outside docker.
+# side of the published ports is MS2_BIND_IP from .env, loopback when unset, as outside docker. Only the client ports
+# are published: the gRPC ports are reached over the compose network, and mysql stays on the host's loopback.
 services:
   # One-shot DB migration + metadata ingestion. Runs manually, not with the stack.
   #   docker compose --profile ingest run --rm file-ingest
@@ -67,8 +68,6 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
-    ports:
-      - "${MS2_BIND_IP:-127.0.0.1}:21001:21001"
     env_file:
       - .env
     environment:
@@ -96,7 +95,6 @@ services:
     # Ports are dynamically assigned from world server, sadly we can't dynamically expose them here. So we have to hardcode them.
     ports:
       - "${MS2_BIND_IP:-127.0.0.1}:20003:20003"
-      - "${MS2_BIND_IP:-127.0.0.1}:21003:21003"
     env_file:
       - .env
     environment:
@@ -119,7 +117,6 @@ services:
     # Ports are dynamically assigned from world server, sadly we can't dynamically expose them here. So we have to hardcode them.
     ports:
       - "${MS2_BIND_IP:-127.0.0.1}:20004:20004"
-      - "${MS2_BIND_IP:-127.0.0.1}:21004:21004"
     env_file:
       - .env
     environment:
@@ -143,7 +140,6 @@ services:
     # Ports are dynamically assigned from world server, sadly we can't dynamically expose them here. So we have to hardcode them.
     ports:
       - "${MS2_BIND_IP:-127.0.0.1}:20002:20002"
-      - "${MS2_BIND_IP:-127.0.0.1}:21002:21002"
     env_file:
       - .env
     environment:
@@ -184,7 +180,8 @@ services:
     volumes:
       - mysql:/var/lib/mysql
     ports:
-      - 3306:3306
+      # Loopback only, whatever MS2_BIND_IP says: the servers reach the database over the compose network.
+      - "127.0.0.1:3306:3306"
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
       interval: 5s
