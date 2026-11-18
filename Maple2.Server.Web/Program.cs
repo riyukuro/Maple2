@@ -8,6 +8,7 @@ using Autofac;
 using Autofac.Extensions.DependencyInjection;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Modules;
+using Maple2.Server.Login.Service;
 using Maple2.Tools;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -58,6 +59,12 @@ builder.Services.AddControllers();
 
 builder.Logging.ClearProviders();
 builder.Logging.AddSerilog(dispose: true);
+
+// The upload route asks the login server whether an account is on its character list (WebController.ProfileRefusal).
+builder.Services.AddGrpcClient<Login.LoginClient>(options => {
+    string loginService = Environment.GetEnvironmentVariable("GRPC_LOGIN_IP") ?? IPAddress.Loopback.ToString();
+    options.Address = new Uri($"http://{loginService}:{Target.GrpcLoginPort}");
+});
 
 builder.Host.UseServiceProviderFactory(new AutofacServiceProviderFactory());
 builder.Host.ConfigureContainer<ContainerBuilder>(autofac => {

@@ -19,7 +19,8 @@ namespace Maple2.Server.Tests.Web;
 // file of 0 bytes or of 1 MiB or more (UploadPendingUgc). Every kind but the profile picture takes the upload the game
 // server opened when it made the resource for the uploading character (UgcHandler: CreateUgc with the upload window),
 // each file once, under the folder the game server recorded. The profile picture, which the client posts without
-// asking the game server, needs that character of that account in game and one picture per gap.
+// asking the game server, needs that character of that account in game, or (kind 5, the new character's picture the
+// character list uploads from the lobby) on that account's character list, and one picture per gap.
 public class UgcUploadTests {
     private const long Account = 10000000001, Owner = 20000000001, Item = 11300902;
     private static readonly DateTime Now = new(2026, 11, 14, 12, 0, 0, DateTimeKind.Utc);
@@ -285,5 +286,37 @@ public class UgcUploadTests {
         Assert.That(db.InGame(test.AccountId + 1, test.CharacterId), Is.False);
         Assert.That(db.InGame(test.AccountId, test.CharacterId + 1), Is.False);
         Assert.That(db.InGame(-1, test.CharacterId), Is.False);
+    }
+
+    // The new character's picture comes from the lobby (UICharacterListDialog::OnCharacterListPacket, mode 1): a
+    // character of the request's account is taken while the login server has that account on its character list. It
+    // was refused before ("Character not in game."), as was every upload of a character not in game. Another account's
+    // character, an account not on its character list, and the wedding picture stay refused there.
+    [Test]
+    public void ProfilePicture_CharacterList() {
+        var test = new TestGameSession();
+        using var db = test.Storage.Context();
+        var asked = new System.Collections.Generic.List<long>();
+        Func<long, bool> on = account => { asked.Add(account); return true; };
+        Func<long, bool> off = _ => false;
+        Assert.That(db.InGame(test.AccountId, test.CharacterId), Is.False);
+        Assert.That(WebController.ProfileRefusal(db, UgcType.ProfileAvatar, test.AccountId, test.CharacterId, on), Is.Null);
+        Assert.That(asked, Is.EqualTo(new[] { test.AccountId }));
+        Assert.That(WebController.ProfileRefusal(db, UgcType.ProfileAvatar, test.AccountId, test.CharacterId, off), Is.EqualTo("Character not in game."));
+        Assert.That(WebController.ProfileRefusal(db, UgcType.ProfileAvatar, test.AccountId + 1, test.CharacterId, on), Is.EqualTo("Character not in game."));
+        Assert.That(WebController.ProfileRefusal(db, UgcType.ProfileAvatar, test.AccountId, test.CharacterId + 1, on), Is.EqualTo("Character not in game."));
+        Assert.That(WebController.ProfileRefusal(db, UgcType.ProfileAvatar, -1, test.CharacterId, on), Is.EqualTo("Character not in game."));
+        Assert.That(WebController.ProfileRefusal(db, UgcType.WeddingProfile, test.AccountId, test.CharacterId, on), Is.EqualTo("Character not in game."));
+    }
+
+    // In game, neither kind asks the login server; the wedding picture also needs the character married.
+    [Test]
+    public void ProfilePicture_InGameAsksNoLogin() {
+        var test = new TestGameSession();
+        test.Start();
+        using var db = test.Storage.Context();
+        Func<long, bool> never = _ => throw new InvalidOperationException("login server asked");
+        Assert.That(WebController.ProfileRefusal(db, UgcType.ProfileAvatar, test.AccountId, test.CharacterId, never), Is.Null);
+        Assert.That(WebController.ProfileRefusal(db, UgcType.WeddingProfile, test.AccountId, test.CharacterId, never), Is.EqualTo("Character not married."));
     }
 }

@@ -7,4 +7,14 @@ import "common.proto";
 
 service Login {
   rpc Heartbeat(maple2.HeartbeatRequest) returns (maple2.HeartbeatResponse);
+  // Whether the account has a login session on its character list (asked by the web server's upload route).
+  rpc CharacterList(CharacterListRequest) returns (CharacterListResponse);
+}
+
+message CharacterListRequest {
+  int64 account_id = 1;
+}
+
+message CharacterListResponse {
+  bool on_character_list = 1;
 }

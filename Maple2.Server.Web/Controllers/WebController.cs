@@ -4,6 +4,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Threading.Tasks;
+using Grpc.Core;
 using Maple2.Database.Model.Ranking;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
@@ -11,6 +12,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
+using Maple2.Server.Login.Service;
 using Maple2.Server.Web.Packet;
 using Maple2.Tools;
 using Maple2.Tools.Extensions;
@@ -19,6 +21,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
 using Serilog;
 using Enum = System.Enum;
+using LoginClient = Maple2.Server.Login.Service.Login.LoginClient;
 
 namespace Maple2.Server.Web.Controllers;
 
@@ -29,13 +32,15 @@ public class WebController : ControllerBase {
     private readonly GameStorage gameStorage;
     private readonly IMemoryCache cache;
     private readonly TableMetadataStorage tableMetadata;
+    private readonly LoginClient login;
     private static readonly TimeSpan RankingCacheDuration = TimeSpan.FromHours(1);
 
-    public WebController(WebStorage webStorage, GameStorage gameStorage, IMemoryCache cache, TableMetadataStorage tableMetadata) {
+    public WebController(WebStorage webStorage, GameStorage gameStorage, IMemoryCache cache, TableMetadataStorage tableMetadata, LoginClient login) {
         this.webStorage = webStorage;
         this.gameStorage = gameStorage;
         this.cache = cache;
         this.tableMetadata = tableMetadata;
+        this.login = login;
     }
 
     // The ranking and info requests are small: irrq is 40 bytes and the search text (CSoapClient::RequestGameRanking,
@@ -173,11 +178,8 @@ public class WebController : ControllerBase {
         string? refusal = UploadRefusal(type, accountId, characterId, resource, fileBytes.Length, now) ?? FileTypeRefusal(type, fileBytes);
         if (refusal == null && IsProfile(type)) {
             using GameStorage.Request db = gameStorage.Context();
-            if (!db.InGame(accountId, characterId)) {
-                refusal = "Character not in game.";
-            } else if (type == UgcType.WeddingProfile && !db.IsMarried(characterId)) {
-                refusal = "Character not married.";
-            } else if (!ProfileUploads.Take(type, characterId, now)) {
+            refusal = ProfileRefusal(db, type, accountId, characterId, OnCharacterList);
+            if (refusal == null && !ProfileUploads.Take(type, characterId, now)) {
                 refusal = ProfileTooSoon;
             }
         } else if (refusal == null) {
@@ -215,10 +217,12 @@ public class WebController : ControllerBase {
     // resource, and of any size.
     // A profile picture's ids must both be real (the client asks the game server nothing before it, CUgcManager
     // FUN_141882020 ugcmanager_4.cpp:1175-1205, and sends Ugc 11 with the answered path after): the controller then
-    // needs that character of that account in game, and one picture per character in ProfileUploads.Gap. The wedding
-    // profile picture (kind 10, CUgcManager::OpenWeddingProfileUpload ugcmanager_4.cpp:767, then Ugc 12 with the
-    // path) is the same, and also needs the character married (the client uploads it only in state 2,
-    // CUgcViewerWeddingProfile::vfunc_3 ugcviewerequip.cpp:799). Every other kind needs the upload the game server opened for the resource (UgcRules.UploadWindow), each file once.
+    // needs that character of that account in game or, for kind 5, on the account's character list (ProfileRefusal),
+    // and one picture per character in ProfileUploads.Gap. The wedding profile picture (kind 10,
+    // CUgcManager::OpenWeddingProfileUpload ugcmanager_4.cpp:767, then Ugc 12 with the path) is the same, and also
+    // needs the character married (the client uploads it only in state 2, CUgcViewerWeddingProfile::vfunc_3
+    // ugcviewerequip.cpp:799). Every other kind needs the upload the game server opened for the resource
+    // (UgcRules.UploadWindow), each file once.
     public static string? UploadRefusal(UgcType type, long accountId, long characterId, UgcResource? resource, int fileSize, DateTime now) {
         if (fileSize is < 1 or > MaxUploadFileSize) {
             return "Invalid file size.";
@@ -244,6 +248,34 @@ public class WebController : ControllerBase {
             return "No upload open.";
         }
         return (resource.UploadedParts & UgcRules.UploadPart(type)) != 0 ? UploadTaken : null;
+    }
+
+    // Why a profile picture of these ids is refused, or null. The character in game: both kinds (a wedding picture also
+    // needs the character married). The character list uploads a new character's picture (kind 5 only) right after its
+    // create, from the lobby (a character list of mode 1, UICharacterListDialog::OnCharacterListPacket @0x1418ed880,
+    // calls CUgcManager::FUN_141880600 ugcmanager_4.cpp:886), and sends Ugc 11 with the answered path to the login
+    // server (CUgcManager::FUN_141882d80 :1416, UICharacterListDialog::FUN_1418ed4e0): a character of the account is
+    // taken while that account's login session is on its character list (onCharacterList, asked of the login server).
+    // Before, the lobby upload was always refused: the client tried it 3 times and then sent Ugc 11 with no path.
+    // Another account's character, or an account with neither a game nor a lobby session, stays refused.
+    public static string? ProfileRefusal(GameStorage.Request db, UgcType type, long accountId, long characterId, Func<long, bool> onCharacterList) {
+        if (db.InGame(accountId, characterId)) {
+            return type == UgcType.WeddingProfile && !db.IsMarried(characterId) ? "Character not married." : null;
+        }
+        if (type == UgcType.ProfileAvatar && db.IsAccountCharacter(accountId, characterId) && onCharacterList(accountId)) {
+            return null;
+        }
+        return "Character not in game.";
+    }
+
+    // The login server's answer for the account; a login server that does not answer has no session to vouch for.
+    private bool OnCharacterList(long accountId) {
+        try {
+            return login.CharacterList(new CharacterListRequest { AccountId = accountId }, deadline: DateTime.UtcNow.AddSeconds(5)).OnCharacterList;
+        } catch (RpcException ex) {
+            Log.Logger.Warning("Login server did not answer for account {AccountId}: {Status}", accountId, ex.StatusCode);
+            return false;
+        }
     }
 
     // The kinds with no resource: a picture of the character, one stored file each, its turns in ProfileUploads.
