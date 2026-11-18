@@ -289,7 +289,8 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                         Meso: level.consume.money,
                         UseItem: level.consume.useItem,
                         HpRate: level.consume.hpRate,
-                        Stat: WithClientCost(id, level.value, level.consume.stat.ToDictionary())),
+                        Stat: WithClientCost(id, level.value, level.consume.stat.ToDictionary()),
+                        TakesItem: TakesItem(level.targetItem)),
                     Detect: new SkillMetadataDetect(
                         IncludeCaster: level.detectProperty?.includeCaster == 1,
                         Distance: level.detectProperty?.distance ?? 0),
@@ -812,6 +813,11 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         clientCooldownsTaken++;
         return condition with { CooldownTime = seconds };
     }
+
+    // Whether the level's cast takes the item it is cast from: its targetItem names an item with a count above 0
+    // (elixir 20000004's skill 90000010 has <targetItem><item id="20000004" count="1"/></targetItem> and no useItem).
+    // Every such skill the data pack has is an item's (90000000 on: potions, eggs, snares, fireworks).
+    public static bool TakesItem(TargetItem? targetItem) => targetItem?.item?.Any(row => row.count > 0) ?? false;
 
     // The consume stats with the played client's level spirit and stamina cost (its level sp and ep, 0 when not
     // given) where the client has the level; else the data pack's.

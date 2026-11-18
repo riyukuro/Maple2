@@ -1337,6 +1337,39 @@ public class SkillCastRulesTests {
         });
     }
 
+    // Elixir 20000004's skill 90000010 names its item in targetItem (count 1) and carries no useItem: before, the
+    // cast took nothing and the stack stayed at its count. A targetItem row with a count now takes the item, once.
+    [Test]
+    public void TargetItemCast_TakesItsItem() {
+        var elixir = new Maple2.File.Parser.Xml.Skill.TargetItem {
+            item = [new Maple2.File.Parser.Xml.Skill.ConsumeItem { id = 20000004, count = 1 }],
+        };
+        var uncounted = new Maple2.File.Parser.Xml.Skill.TargetItem {
+            item = [new Maple2.File.Parser.Xml.Skill.ConsumeItem { id = 20000004, count = 0 }],
+        };
+        Assert.Multiple(() => {
+            Assert.That(SkillMapper.TakesItem(elixir), Is.True);
+            Assert.That(SkillMapper.TakesItem(uncounted), Is.False);
+            Assert.That(SkillMapper.TakesItem(new Maple2.File.Parser.Xml.Skill.TargetItem()), Is.False);
+            Assert.That(SkillMapper.TakesItem(null), Is.False);
+
+            Assert.That(SkillCastRules.ConsumesItem(false, 2, false, takesItem: true), Is.True);
+            Assert.That(SkillCastRules.ConsumesItem(false, 2, true, takesItem: true), Is.False, "once per cast");
+            Assert.That(SkillCastRules.ConsumesItem(false, 2, false, takesItem: false), Is.False);
+        });
+    }
+
+    // A played client's level added to a data pack potion skill keeps the pack's targetItem take.
+    [Test]
+    public void PlayedClientLevel_OfAPackSkill_KeepsTheItemTake() {
+        var document = new XmlDocument();
+        document.LoadXml("""<ms2><skill id="90000010"><basic><condition /></basic><level value="2" /></skill></ms2>""");
+        XmlElement skill = (XmlElement) document.SelectSingleNode("ms2/skill")!;
+        SkillMetadataLevel built = PlayedClientSkills.BuildLevel(skill, (XmlElement) skill.SelectSingleNode("level")!);
+        SkillMetadataLevel pack = built with { Consume = built.Consume with { TakesItem = true } };
+        Assert.That(PlayedClientSkills.WithPackLevel(built, pack).Consume.TakesItem, Is.True);
+    }
+
     // A played client's level added to a data pack item skill: before, the added level had UseItem false and the
     // pack condition's jobs and level left out, so the cast took it as a job skill's and skipped its condition and
     // cooldown. It now takes them from the pack's nearest level and keeps the client's cooldown and weapons.

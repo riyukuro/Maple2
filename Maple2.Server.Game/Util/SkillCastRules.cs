@@ -193,7 +193,10 @@ public static class SkillCastRules {
     // A cast takes its item once, however often its cost is asked for. The pet taming main types (17 a snare,
     // 18 a candy, 19 a master snare; the client's item skill list, SkillData::FUN_1407e9d70) carry no useItem in
     // the server's skill data, yet each throw or snare is one item of a stack: chosen here, their cast takes it too.
-    public static bool ConsumesItem(bool useItem, int mainType, bool itemConsumed) => (useItem || PetTamingItem(mainType)) && !itemConsumed;
+    // A level whose targetItem names its item with a count (SkillMetadataConsume.TakesItem: elixir 20000004's
+    // 90000010 and the other potions) takes it too, though it carries no useItem.
+    public static bool ConsumesItem(bool useItem, int mainType, bool itemConsumed, bool takesItem = false) =>
+        (useItem || takesItem || PetTamingItem(mainType)) && !itemConsumed;
 
     public static bool PetTamingItem(int mainType) => mainType is 17 or 18 or 19;
 

@@ -108,11 +108,14 @@ public record SkillMetadataAutoTargeting(
     float MaxHeight,
     bool UseMove);
 
+// TakesItem: the level's targetItem names the item it is cast from with a count above 0 (the potions, elixirs and
+// other consumables carry no consume useItem, only that row), so each cast takes one of the stack as useItem's does.
 public record SkillMetadataConsume(
     long Meso,
     bool UseItem,
     float HpRate,
-    Dictionary<BasicAttribute, long> Stat);
+    Dictionary<BasicAttribute, long> Stat,
+    bool TakesItem = false);
 
 public record SkillMetadataDetect(
     bool IncludeCaster, // range & arrow can use 2, but detect & sensor only use 0 & 1

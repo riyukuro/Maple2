@@ -131,7 +131,8 @@ public static partial class PlayedClientSkills {
     // shadow world, flyable map, battle ride, map codes, hand weapons, recharge gap, required effects and refused
     // effect groups, cooldown shown in the UI) and cost, and what the client's
     // level does not give from the pack's level: the rest of its begin condition (level, jobs, stats, targets) and
-    // whether it is an item skill's level (consume useItem, which the cast checks its condition and cooldown for).
+    // whether it is an item skill's level (consume useItem, which the cast checks its condition and cooldown for) and
+    // whether its cast takes the item (targetItem).
     public static SkillMetadataLevel WithPackLevel(SkillMetadataLevel built, SkillMetadataLevel pack) {
         BeginCondition client = built.Condition;
         return built with {
@@ -148,7 +149,7 @@ public static partial class PlayedClientSkills {
                 NotEffectGroups = client.NotEffectGroups,
                 CooldownShownInUi = client.CooldownShownInUi,
             },
-            Consume = built.Consume with { UseItem = pack.Consume.UseItem },
+            Consume = built.Consume with { UseItem = pack.Consume.UseItem, TakesItem = pack.Consume.TakesItem },
         };
     }
 
