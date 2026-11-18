@@ -100,6 +100,17 @@ public partial class GameStorage {
                 && marriage.Status == MaritalStatus.Married);
         }
 
+        // The wedding profile picture path stored for the character in its marriage (Ugc 12 writes it at once), or
+        // null. The web server keeps that file when a new picture is uploaded.
+        public string? GetWeddingProfile(long characterId) {
+            if (characterId <= 0) {
+                return null;
+            }
+            Model.Marriage? model = Context.Marriage.FirstOrDefault(marriage => (marriage.Partner1Id == characterId || marriage.Partner2Id == characterId)
+                && marriage.Status == MaritalStatus.Married);
+            return model == null ? null : model.Partner1Id == characterId ? model.Partner1Profile : model.Partner2Profile;
+        }
+
         // A wedding mission's intimacy (quest weddingExp) added to the marriage's exp log by one partner, under the
         // type of that partner by the stored order. Refused unless the marriage counts it and the character is in it.
         public bool AddWeddingMissionExp(long marriageId, long characterId, long amount, DateTime time) {

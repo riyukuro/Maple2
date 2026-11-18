@@ -178,7 +178,7 @@ public class WebController : ControllerBase {
         string? refusal = UploadRefusal(type, accountId, characterId, resource, fileBytes.Length, now) ?? FileTypeRefusal(type, fileBytes);
         if (refusal == null && IsProfile(type)) {
             using GameStorage.Request db = gameStorage.Context();
-            refusal = ProfileRefusal(db, type, accountId, characterId, OnCharacterList);
+            refusal = await ProfileRefusal(db, type, accountId, characterId, OnCharacterList);
             if (refusal == null && !ProfileUploads.Take(type, characterId, now)) {
                 refusal = ProfileTooSoon;
             }
@@ -258,20 +258,23 @@ public class WebController : ControllerBase {
     // taken while that account's login session is on its character list (onCharacterList, asked of the login server).
     // Before, the lobby upload was always refused: the client tried it 3 times and then sent Ugc 11 with no path.
     // Another account's character, or an account with neither a game nor a lobby session, stays refused.
-    public static string? ProfileRefusal(GameStorage.Request db, UgcType type, long accountId, long characterId, Func<long, bool> onCharacterList) {
+    public static async Task<string?> ProfileRefusal(GameStorage.Request db, UgcType type, long accountId, long characterId, Func<long, Task<bool>> onCharacterList) {
         if (db.InGame(accountId, characterId)) {
             return type == UgcType.WeddingProfile && !db.IsMarried(characterId) ? "Character not married." : null;
         }
-        if (type == UgcType.ProfileAvatar && db.IsAccountCharacter(accountId, characterId) && onCharacterList(accountId)) {
+        if (type == UgcType.ProfileAvatar && db.IsAccountCharacter(accountId, characterId) && await onCharacterList(accountId)) {
             return null;
         }
         return "Character not in game.";
     }
 
     // The login server's answer for the account; a login server that does not answer has no session to vouch for.
-    private bool OnCharacterList(long accountId) {
+    // Awaited, so the request's thread is not held while the login server answers.
+    private async Task<bool> OnCharacterList(long accountId) {
         try {
-            return login.CharacterList(new CharacterListRequest { AccountId = accountId }, deadline: DateTime.UtcNow.AddSeconds(5)).OnCharacterList;
+            CharacterListResponse response = await login.CharacterListAsync(new CharacterListRequest { AccountId = accountId },
+                deadline: DateTime.UtcNow.AddSeconds(5));
+            return response.OnCharacterList;
         } catch (RpcException ex) {
             Log.Logger.Warning("Login server did not answer for account {AccountId}: {Status}", accountId, ex.StatusCode);
             return false;
@@ -309,27 +312,47 @@ public class WebController : ControllerBase {
     public const string ProfileTooSoon = "Profile picture too soon.";
 
     // The key of the file already stored under root for this upload when it holds exactly these bytes, else null. A
-    // profile picture's file name is new for each upload, so its folder's one file is compared.
+    // profile picture's file name is new for each upload, so each file of its folder is compared (the character's
+    // current picture and the newest one, KeepCurrentProfile).
     public static string? StoredKey(string root, UgcType type, long characterId, UgcResource? resource, byte[] fileBytes) {
         UploadTarget? target = Target(type, characterId, resource, "");
         if (target == null) {
             return null;
         }
         string folder = Path.Combine(root, target.Folder);
-        string file = Path.Combine(folder, target.File);
-        if (IsProfile(type)) {
-            string[] files = Directory.Exists(folder) ? Directory.GetFiles(folder) : [];
-            if (files.Length != 1) {
-                return null;
-            }
-            file = files[0];
-            target = Target(type, characterId, resource, Path.GetFileNameWithoutExtension(file))!;
+        if (!IsProfile(type)) {
+            return SameBytes(Path.Combine(folder, target.File), fileBytes) ? target.Key : null;
         }
+        string[] files = Directory.Exists(folder) ? Directory.GetFiles(folder) : [];
+        string? file = files.FirstOrDefault(stored => SameBytes(stored, fileBytes));
+        return file == null ? null : Target(type, characterId, resource, Path.GetFileNameWithoutExtension(file))!.Key;
+    }
+
+    private static bool SameBytes(string file, byte[] fileBytes) {
         try {
             return System.IO.File.Exists(file) && new FileInfo(file).Length == fileBytes.Length
-                && System.IO.File.ReadAllBytes(file).AsSpan().SequenceEqual(fileBytes) ? target.Key : null;
+                && System.IO.File.ReadAllBytes(file).AsSpan().SequenceEqual(fileBytes);
         } catch (IOException) {
-            return null;
+            return false;
+        }
+    }
+
+    // Before a new profile picture (or wedding profile picture) is written, the folder's other files are deleted but
+    // the one the character's stored path names (current: Ugc 11 or 12 applied it), so the folder holds that one and
+    // the new one. The new file becomes the picture only when the owner's Ugc 11 or 12 applies its key. Before, the
+    // whole folder was deleted: an upload with a character's ids (the client sends them, CSoapClient::UploadUgcFile)
+    // deleted the file the character shows.
+    public static void KeepCurrentProfile(string folder, UgcType type, long characterId, string? current) {
+        if (!Directory.Exists(folder)) {
+            return;
+        }
+        bool valid = type == UgcType.ProfileAvatar ? UgcRules.ProfilePathValid(current, characterId)
+            : UgcRules.WeddingProfilePathValid(current, characterId);
+        string? keep = valid ? Path.GetFileName(current) : null;
+        foreach (string file in Directory.GetFiles(folder)) {
+            if (Path.GetFileName(file) != keep) {
+                System.IO.File.Delete(file);
+            }
         }
     }
 
@@ -366,13 +389,18 @@ public class WebController : ControllerBase {
     }
 
     // Writes the file and answers its key ("0,<key>", CSoapClient::UploadUgcFile reads code and text). A profile picture
-    // (or wedding profile picture) replaces the character's old one (its folder is emptied first). A file that cannot be written gives its part (or
-    // the profile picture's turn) back, so the client's next try (up to 3, UploadPendingUgc) can still take it.
+    // (or wedding profile picture) leaves only the character's current one in its folder (KeepCurrentProfile). A file
+    // that cannot be written gives its part (or the profile picture's turn) back, so the client's next try (up to 3,
+    // UploadPendingUgc) can still take it.
     private IResult Store(UgcType type, UploadTarget target, long characterId, UgcResource? resource, DateTime now, byte[] fileBytes) {
         string folder = Path.Combine(Paths.WEB_DATA_DIR, target.Folder);
         try {
-            if (IsProfile(type) && Path.Exists(folder)) {
-                Directory.Delete(folder, true);
+            if (IsProfile(type)) {
+                string? current;
+                using (GameStorage.Request db = gameStorage.Context()) {
+                    current = type == UgcType.ProfileAvatar ? db.GetCharacterPicture(characterId) : db.GetWeddingProfile(characterId);
+                }
+                KeepCurrentProfile(folder, type, characterId, current);
             }
             Directory.CreateDirectory(folder);
             System.IO.File.WriteAllBytes(Path.Combine(folder, target.File), fileBytes);

@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Threading.Tasks;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -184,7 +185,7 @@ public class UgcUploadTests {
     }
 
     // The client's retry of a stored file (its answer lost): the same bytes get the stored key; other bytes, or
-    // nothing stored, get none. A profile picture compares its folder's one file.
+    // nothing stored, get none. A profile picture compares each file of its folder.
     [Test]
     public void StoredKey_SameBytesOnly() {
         string root = Path.Combine(Path.GetTempPath(), "ugc-" + Guid.NewGuid());
@@ -206,8 +207,37 @@ public class UgcUploadTests {
             Assert.That(WebController.StoredKey(root, UgcType.ProfileAvatar, Owner, null, bytes), Is.EqualTo($"data/profiles/avatar/{Owner}/g.png"));
             Assert.That(WebController.StoredKey(root, UgcType.ProfileAvatar, Owner, null, [9]), Is.Null);
             Assert.That(WebController.StoredKey(root, UgcType.ProfileAvatar, Owner + 1, null, bytes), Is.Null);
+            // The current picture and the newest one: either is found by its bytes.
+            System.IO.File.WriteAllBytes(Path.Combine(profiles, "h.png"), [8, 8]);
+            Assert.That(WebController.StoredKey(root, UgcType.ProfileAvatar, Owner, null, bytes), Is.EqualTo($"data/profiles/avatar/{Owner}/g.png"));
+            Assert.That(WebController.StoredKey(root, UgcType.ProfileAvatar, Owner, null, [8, 8]), Is.EqualTo($"data/profiles/avatar/{Owner}/h.png"));
         } finally {
             Directory.Delete(root, true);
+        }
+    }
+
+    // A new profile picture leaves the file the character's stored path names (the one it shows) and deletes the
+    // others. An upload with a character's ids deleted the whole folder before, the shown picture with it. A stored
+    // path that is not this character's own (none, another character's, the other kind's) keeps nothing.
+    [TestCase(UgcType.ProfileAvatar, "data/profiles/avatar/{id}/cur.png", "cur.png")]
+    [TestCase(UgcType.ProfileAvatar, null, null)]
+    [TestCase(UgcType.ProfileAvatar, "", null)]
+    [TestCase(UgcType.ProfileAvatar, "data/profiles/avatar/987654/cur.png", null)]
+    [TestCase(UgcType.ProfileAvatar, "data/profiles/wedding/{id}/cur.png", null)]
+    [TestCase(UgcType.WeddingProfile, "data/profiles/wedding/{id}/cur.png", "cur.png")]
+    [TestCase(UgcType.WeddingProfile, "data/profiles/avatar/{id}/cur.png", null)]
+    public void KeepCurrentProfile_KeepsTheShownPicture(UgcType type, string? current, string? kept) {
+        string folder = Path.Combine(Path.GetTempPath(), "ugc-" + Guid.NewGuid());
+        try {
+            WebController.KeepCurrentProfile(folder, type, Owner, null); // no folder yet
+            Directory.CreateDirectory(folder);
+            foreach (string name in new[] { "cur.png", "old.png", "spoof.png" }) {
+                System.IO.File.WriteAllBytes(Path.Combine(folder, name), [1]);
+            }
+            WebController.KeepCurrentProfile(folder, type, Owner, current?.Replace("{id}", Owner.ToString()));
+            Assert.That(Directory.GetFiles(folder).Select(Path.GetFileName), Is.EqualTo(kept == null ? Array.Empty<string>() : new[] { kept }));
+        } finally {
+            Directory.Delete(folder, true);
         }
     }
 
@@ -293,30 +323,30 @@ public class UgcUploadTests {
     // was refused before ("Character not in game."), as was every upload of a character not in game. Another account's
     // character, an account not on its character list, and the wedding picture stay refused there.
     [Test]
-    public void ProfilePicture_CharacterList() {
+    public async Task ProfilePicture_CharacterList() {
         var test = new TestGameSession();
         using var db = test.Storage.Context();
         var asked = new System.Collections.Generic.List<long>();
-        Func<long, bool> on = account => { asked.Add(account); return true; };
-        Func<long, bool> off = _ => false;
+        Func<long, Task<bool>> on = account => { asked.Add(account); return Task.FromResult(true); };
+        Func<long, Task<bool>> off = _ => Task.FromResult(false);
         Assert.That(db.InGame(test.AccountId, test.CharacterId), Is.False);
-        Assert.That(WebController.ProfileRefusal(db, UgcType.ProfileAvatar, test.AccountId, test.CharacterId, on), Is.Null);
+        Assert.That(await WebController.ProfileRefusal(db, UgcType.ProfileAvatar, test.AccountId, test.CharacterId, on), Is.Null);
         Assert.That(asked, Is.EqualTo(new[] { test.AccountId }));
-        Assert.That(WebController.ProfileRefusal(db, UgcType.ProfileAvatar, test.AccountId, test.CharacterId, off), Is.EqualTo("Character not in game."));
-        Assert.That(WebController.ProfileRefusal(db, UgcType.ProfileAvatar, test.AccountId + 1, test.CharacterId, on), Is.EqualTo("Character not in game."));
-        Assert.That(WebController.ProfileRefusal(db, UgcType.ProfileAvatar, test.AccountId, test.CharacterId + 1, on), Is.EqualTo("Character not in game."));
-        Assert.That(WebController.ProfileRefusal(db, UgcType.ProfileAvatar, -1, test.CharacterId, on), Is.EqualTo("Character not in game."));
-        Assert.That(WebController.ProfileRefusal(db, UgcType.WeddingProfile, test.AccountId, test.CharacterId, on), Is.EqualTo("Character not in game."));
+        Assert.That(await WebController.ProfileRefusal(db, UgcType.ProfileAvatar, test.AccountId, test.CharacterId, off), Is.EqualTo("Character not in game."));
+        Assert.That(await WebController.ProfileRefusal(db, UgcType.ProfileAvatar, test.AccountId + 1, test.CharacterId, on), Is.EqualTo("Character not in game."));
+        Assert.That(await WebController.ProfileRefusal(db, UgcType.ProfileAvatar, test.AccountId, test.CharacterId + 1, on), Is.EqualTo("Character not in game."));
+        Assert.That(await WebController.ProfileRefusal(db, UgcType.ProfileAvatar, -1, test.CharacterId, on), Is.EqualTo("Character not in game."));
+        Assert.That(await WebController.ProfileRefusal(db, UgcType.WeddingProfile, test.AccountId, test.CharacterId, on), Is.EqualTo("Character not in game."));
     }
 
     // In game, neither kind asks the login server; the wedding picture also needs the character married.
     [Test]
-    public void ProfilePicture_InGameAsksNoLogin() {
+    public async Task ProfilePicture_InGameAsksNoLogin() {
         var test = new TestGameSession();
         test.Start();
         using var db = test.Storage.Context();
-        Func<long, bool> never = _ => throw new InvalidOperationException("login server asked");
-        Assert.That(WebController.ProfileRefusal(db, UgcType.ProfileAvatar, test.AccountId, test.CharacterId, never), Is.Null);
-        Assert.That(WebController.ProfileRefusal(db, UgcType.WeddingProfile, test.AccountId, test.CharacterId, never), Is.EqualTo("Character not married."));
+        Func<long, Task<bool>> never = _ => throw new InvalidOperationException("login server asked");
+        Assert.That(await WebController.ProfileRefusal(db, UgcType.ProfileAvatar, test.AccountId, test.CharacterId, never), Is.Null);
+        Assert.That(await WebController.ProfileRefusal(db, UgcType.WeddingProfile, test.AccountId, test.CharacterId, never), Is.EqualTo("Character not married."));
     }
 }

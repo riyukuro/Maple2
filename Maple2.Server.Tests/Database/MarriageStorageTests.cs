@@ -116,6 +116,7 @@ public class MarriageStorageTests {
         using (GameStorage.Request db = storage.Context()) {
             Assert.That(db.SaveWeddingProfile(marriageId, first, "a"), Is.False);
             Assert.That(db.IsMarried(first), Is.False);
+            Assert.That(db.GetWeddingProfile(first), Is.Null);
         }
         Marry();
         using (GameStorage.Request db = storage.Context()) {
@@ -126,6 +127,10 @@ public class MarriageStorageTests {
             Assert.That(db.SaveWeddingProfile(marriageId, second, "b"), Is.True);
             Assert.That(db.SaveWeddingProfile(marriageId, second + 100, "c"), Is.False);
             Assert.That(db.SaveWeddingProfile(marriageId + 1, first, "c"), Is.False);
+            // What the web server keeps when the next picture is uploaded (WebController.KeepCurrentProfile).
+            Assert.That(db.GetWeddingProfile(first), Is.EqualTo("a"));
+            Assert.That(db.GetWeddingProfile(second), Is.EqualTo("b"));
+            Assert.That(db.GetWeddingProfile(second + 100), Is.Null);
         }
         Marriage ofFirst = Load(first);
         Assert.That((ofFirst.Partner1.Profile, ofFirst.Partner2.Profile), Is.EqualTo(("b", "a")));

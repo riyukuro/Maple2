@@ -366,6 +366,12 @@ public partial class GameStorage {
                 && Context.Character.Any(character => character.Id == characterId && character.AccountId == accountId);
         }
 
+        // The profile picture path stored for the character (Ugc 11 writes it at once, in game and in the lobby), or
+        // null for no character. The web server keeps that file when a new picture is uploaded.
+        public string? GetCharacterPicture(long characterId) {
+            return characterId > 0 ? Context.Character.Find(characterId)?.Profile.Picture : null;
+        }
+
         // We pass in objectId only for Player initialization.
         // entryMails gets the time of the character's last save (its row version before this entry stamps it, epoch
         // seconds) and gives the mails the entry sends; they are stored in the same save as the entry's stamp, so a
@@ -1018,8 +1024,10 @@ public partial class GameStorage {
             return Context.TrySaveChanges();
         }
 
-        // Writes only the profile's picture of a character of the account, from the row as stored.
-        public bool SetCharacterPicture(long characterId, long accountId, string picture) {
+        // Writes only the profile's picture of a character of the account, from the row as stored. A session's own
+        // character is passed as well: its row version moves with the write, and the next full save must not find it
+        // stale (as RenameCharacter).
+        public bool SetCharacterPicture(long characterId, long accountId, string picture, Character? character = null) {
             Model.Character? row = Context.Character.AsTracking()
                 .FirstOrDefault(character => character.Id == characterId && character.AccountId == accountId);
             if (row == null) {
@@ -1039,7 +1047,16 @@ public partial class GameStorage {
                 ReturnY = row.Profile.ReturnY,
                 ReturnZ = row.Profile.ReturnZ,
             };
-            return Context.TrySaveChanges();
+            if (!Context.TrySaveChanges()) {
+                return false;
+            }
+            if (character != null) {
+                (DateTime CharacterLastModified, DateTime AccountLastModified, DateTime UnlockLastModified)? updated = GetLastModifiedTimestamps(characterId);
+                if (updated != null) {
+                    character.LastModified = updated.Value.CharacterLastModified;
+                }
+            }
+            return true;
         }
 
         public (IList<KeyBind>? KeyBinds, IList<QuickSlot[]>? HotBars, List<SkillMacro>?, List<Wardrobe>?, List<int>? FavoriteStickers, List<long>? FavoriteDesigners,

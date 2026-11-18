@@ -54,6 +54,9 @@ public class UgcSmallCommandTests {
         string path = Own("abc-123");
         Picture(path);
         Assert.That(session.Player.Value.Character.Picture, Is.EqualTo(path));
+        // Stored at once: the web server keeps the stored path's file when the next picture is uploaded.
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetCharacterPicture(session.CharacterId), Is.EqualTo(path));
     }
 
     [TestCase("data/profiles/avatar/987654/other.png")] // another character's folder
@@ -66,6 +69,8 @@ public class UgcSmallCommandTests {
         string before = session.Player.Value.Character.Picture;
         Picture(path.Replace("{id}", session.CharacterId.ToString()));
         Assert.That(session.Player.Value.Character.Picture, Is.EqualTo(before));
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetCharacterPicture(session.CharacterId), Is.EqualTo(before));
     }
 
     [Test]
