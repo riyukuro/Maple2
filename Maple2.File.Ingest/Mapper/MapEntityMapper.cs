@@ -8,6 +8,7 @@ using Maple2.File.Parser.MapXBlock;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Tools.Extensions;
+using System.Numerics;
 using static M2dXmlGenerator.FeatureLocaleFilter;
 
 namespace Maple2.File.Ingest.Mapper;
@@ -39,6 +40,10 @@ public class MapEntityMapper : TypeMapper<MapEntity> {
 
         Dictionary<string, IMS2WayPoint> ms2WayPoints = new();
         IMapEntity[] mapEntities = entities as IMapEntity[] ?? entities.ToArray();
+        // An npc is placed on the ground below its spawn point, 1 unit down, as the official server sends it (SpawnGround);
+        // the colliders are read only for a map that has npc spawns.
+        SpawnGround? spawnGround = null;
+        Vector3 Grounded(Vector3 position) => (spawnGround ??= new SpawnGround(mapEntities)).Place(position);
         foreach (IMapEntity wayPoint in mapEntities) {
             switch (wayPoint) {
                 case IMS2WayPoint ms2WayPoint:
@@ -104,7 +109,7 @@ public class MapEntityMapper : TypeMapper<MapEntity> {
                                 continue;
                             }
                             yield return new MapEntity(xblock, new Guid(entity.EntityId), entity.EntityName) {
-                                Block = new EventSpawnGroupNPC(groupSpawn.EntityId, groupSpawn.SpawnPointID, groupSpawn.Position, groupSpawn.Rotation, groupSpawn.IsVisible, groupSpawn.IsSpawnOnFieldCreate, groupSpawn.SpawnRadius, (int) groupSpawn.NpcCount, (int) groupSpawn.RegenCheckTime, (int) groupSpawn.LifeTime, groupSpawn.SpawnAnimation, groupSpawn.NpcGroupTag ?? string.Empty, groups),
+                                Block = new EventSpawnGroupNPC(groupSpawn.EntityId, groupSpawn.SpawnPointID, Grounded(groupSpawn.Position), groupSpawn.Rotation, groupSpawn.IsVisible, groupSpawn.IsSpawnOnFieldCreate, groupSpawn.SpawnRadius, (int) groupSpawn.NpcCount, (int) groupSpawn.RegenCheckTime, (int) groupSpawn.LifeTime, groupSpawn.SpawnAnimation, groupSpawn.NpcGroupTag ?? string.Empty, groups),
                             };
                             continue;
                         case ISpawnPointNPC npcSpawn:
@@ -137,12 +142,12 @@ public class MapEntityMapper : TypeMapper<MapEntity> {
                             switch (npcSpawn) {
                                 case IEventSpawnPointNPC eventNpcSpawn:
                                     yield return new MapEntity(xblock, new Guid(entity.EntityId), entity.EntityName) {
-                                        Block = new EventSpawnPointNPC(npcSpawn.EntityId, npcSpawn.SpawnPointID, npcSpawn.Position, npcSpawn.Rotation, npcSpawn.IsVisible, npcSpawn.IsSpawnOnFieldCreate, npcSpawn.SpawnRadius, (int) npcSpawn.NpcCount, npcList, (int) npcSpawn.RegenCheckTime, (int) eventNpcSpawn.LifeTime, eventNpcSpawn.SpawnAnimation, patrolData),
+                                        Block = new EventSpawnPointNPC(npcSpawn.EntityId, npcSpawn.SpawnPointID, Grounded(npcSpawn.Position), npcSpawn.Rotation, npcSpawn.IsVisible, npcSpawn.IsSpawnOnFieldCreate, npcSpawn.SpawnRadius, (int) npcSpawn.NpcCount, npcList, (int) npcSpawn.RegenCheckTime, (int) eventNpcSpawn.LifeTime, eventNpcSpawn.SpawnAnimation, patrolData),
                                     };
                                     continue;
                                 default:
                                     yield return new MapEntity(xblock, new Guid(entity.EntityId), entity.EntityName) {
-                                        Block = new SpawnPointNPC(npcSpawn.EntityId, npcSpawn.SpawnPointID, npcSpawn.Position, npcSpawn.Rotation, npcSpawn.IsVisible, npcSpawn.IsSpawnOnFieldCreate, npcSpawn.SpawnRadius, npcList, (int) npcSpawn.RegenCheckTime, patrolData, (int) npcSpawn.NpcCount),
+                                        Block = new SpawnPointNPC(npcSpawn.EntityId, npcSpawn.SpawnPointID, Grounded(npcSpawn.Position), npcSpawn.Rotation, npcSpawn.IsVisible, npcSpawn.IsSpawnOnFieldCreate, npcSpawn.SpawnRadius, npcList, (int) npcSpawn.RegenCheckTime, patrolData, (int) npcSpawn.NpcCount),
                                     };
                                     continue;
                             }

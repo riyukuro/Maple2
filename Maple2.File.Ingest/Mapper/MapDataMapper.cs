@@ -21,11 +21,6 @@ namespace Maple2.File.Ingest.Mapper;
 public class MapDataMapper : TypeMapper<MapDataMetadata> {
     private const float BLOCK_SIZE = (float) Constant.BlockSize;
     private const float HALF_BLOCK = 0.5f * BLOCK_SIZE;
-    // The client's PhysX groups for box colliders: a whitebox defaults to 3 unless its PropCollisionGroup says otherwise
-    // (WorldService::OnPhysXProp, worldservice_1.cpp:3748-3756), a cube's GeneratePhysX box is always 9
-    // (CubeMapInformationService::GeneratePhysX, cubemapinformationservice_3.cpp:4342).
-    private const ushort WHITEBOX_GROUP = 3;
-    private const ushort GENERATE_PHYSX_GROUP = 9;
 
     private readonly HashSet<string> xBlocks;
     private readonly XBlockParser parser;
@@ -86,208 +81,20 @@ public class MapDataMapper : TypeMapper<MapDataMetadata> {
                 continue;
             }
 
-            transform.Transformation = Matrix4x4.Identity;
-            transform.Position = placeable.Position;
-            transform.RotationAnglesDegrees = placeable.Rotation;
-            transform.Scale = placeable.Scale;
+            Matrix4x4 transformation = MapColliders.EntityTransform(placeable, transform);
 
             Vector3 position = (1 / BLOCK_SIZE) * (placeable.Position - new Vector3(0, 0, HALF_BLOCK)); // offset to round to nearest
             var nearestCubeIndex = new Vector3S((short) Math.Floor(position.X + 0.5f), (short) Math.Floor(position.Y + 0.5f), (short) Math.Floor(position.Z + 0.5f));
             Vector3 voxelPosition = BLOCK_SIZE * new Vector3(nearestCubeIndex.X, nearestCubeIndex.Y, nearestCubeIndex.Z);
-            var entityBounds = new BoundingBox3();
-
-            bool isHexId = entity.EntityId.Length == 32;
-
-            for (int i = 0; isHexId && i < entity.EntityId.Length; ++i) {
-                isHexId = entity.EntityId[i].IsHexDigit();
+            FieldEntity? fieldEntity = MapColliders.Create(entity, placeable, transformation, vibrateObjectId, invalidLlids, missingLlids);
+            if (fieldEntity is null) {
+                continue;
+            }
+            if (fieldEntity is FieldVibrateEntity) {
+                vibrateObjectId++;
             }
 
-            FieldEntity? fieldEntity;
-            var entityId = new FieldEntityId(0, 0, string.Empty);
-
-            if (isHexId) {
-                entityId = FieldEntityId.FromString(entity.EntityId);
-            }
-
-            switch (entity) {
-                /*
-                    PhysXProp                               | WhiteboxCube
-                    PhysXProp, MS2MapProperties, MS2Vibrate | PhysXCube, DoesMakeTok
-                    MS2MapProperties                        | PhysXCube
-                    MS2MapProperties, MS2Vibrate            | None
-                    MS2MapProperties, MS2Breakable          | PhysXCube, NxCube, BothCube, OnlyNxCube
-                    MS2Breakable                            | NxCube
-                 */
-                case IMS2Breakable breakable:
-                    continue; // intentionally skip breakables. these are dynamic so should be handled at run time
-                case IPhysXWhitebox whitebox:
-                    entityBounds.Min = -new Vector3(whitebox.ShapeDimensions.X, whitebox.ShapeDimensions.Y, 0.5f * whitebox.ShapeDimensions.Z);
-                    entityBounds.Max = new Vector3(whitebox.ShapeDimensions.X, whitebox.ShapeDimensions.Y, 0.5f * whitebox.ShapeDimensions.Z);
-                    fieldEntity = new FieldBoxColliderEntity(
-                        Id: entityId,
-                        Position: placeable.Position - new Vector3(0, 0, 0.5f * whitebox.ShapeDimensions.Z),
-                        Rotation: placeable.Rotation,
-                        Scale: placeable.Scale,
-                        Bounds: BoundingBox3.Transform(entityBounds, transform.Transformation),
-                        Size: whitebox.ShapeDimensions,
-                        IsWhiteBox: true,
-                        IsFluid: false,
-                        MapAttribute: MapAttribute.none,
-                        CollisionGroup: whitebox is IPhysXProp whiteboxProp ? whiteboxProp.PropCollisionGroup : WHITEBOX_GROUP);
-                    break;
-                case IMesh mesh:
-                    if (entity is IMS2Vibrate { Enabled: true } vibrate) {
-                        entityBounds.Min = -new Vector3(HALF_BLOCK, HALF_BLOCK, 0);
-                        entityBounds.Max = new Vector3(HALF_BLOCK, HALF_BLOCK, BLOCK_SIZE);
-
-                        fieldEntity = new FieldVibrateEntity(
-                            Id: entityId,
-                            Position: placeable.Position,
-                            Rotation: placeable.Rotation,
-                            Scale: placeable.Scale,
-                            Bounds: BoundingBox3.Transform(entityBounds, transform.Transformation),
-                            BreakDefense: vibrate.brokenDefence,
-                            BreakTick: vibrate.brokenTick,
-                            VibrateIndex: vibrateObjectId++,
-                            HideGroupId: vibrate.hideGroupId,
-                            MaterialTag: vibrate.materialTag ?? string.Empty,
-                            ShapeDimensions: vibrate.ShapeDimensions);
-
-                        break;
-                    }
-
-                    if (entity is IMS2CubeProp cube && cube.CubeSalableGroup != 0) {
-                        entityBounds.Min = -new Vector3(HALF_BLOCK, HALF_BLOCK, 0);
-                        entityBounds.Max = new Vector3(HALF_BLOCK, HALF_BLOCK, BLOCK_SIZE);
-                        fieldEntity = new FieldSellableTile(
-                            Id: entityId,
-                            Position: placeable.Position,
-                            Rotation: placeable.Rotation,
-                            Scale: placeable.Scale,
-                            Bounds: BoundingBox3.Transform(entityBounds, transform.Transformation),
-                            SellableGroup: cube.CubeSalableGroup
-                        );
-
-                        break;
-                    }
-
-                    bool isFluid = false;
-                    var attribute = MapAttribute.none;
-                    if (entity is IMS2MapProperties meshMapProperties) {
-                        if (meshMapProperties.DisableCollision) {
-                            continue;
-                        }
-
-                        isFluid = meshMapProperties.CubeType == "Fluid";
-                        attribute = Enum.TryParse(meshMapProperties.MapAttribute, out MapAttribute mapAttribute) ? mapAttribute : MapAttribute.none;
-                        if (meshMapProperties.GeneratePhysX) {
-                            var meshPhysXDimension = new Vector3(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
-
-                            if (meshMapProperties.GeneratePhysXDimension != Vector3.Zero) {
-                                meshPhysXDimension = meshMapProperties.GeneratePhysXDimension;
-                            }
-
-                            entityBounds.Min = -new Vector3(0.5f * meshPhysXDimension.X, 0.5f * meshPhysXDimension.Y, 0);
-                            entityBounds.Max = new Vector3(0.5f * meshPhysXDimension.X, 0.5f * meshPhysXDimension.Y, meshPhysXDimension.Z);
-
-                            fieldEntity = new FieldBoxColliderEntity(
-                                Id: entityId,
-                                Position: placeable.Position,
-                                Rotation: placeable.Rotation,
-                                Scale: placeable.Scale,
-                                Bounds: BoundingBox3.Transform(entityBounds, transform.Transformation),
-                                Size: meshPhysXDimension,
-                                IsWhiteBox: false,
-                                IsFluid: isFluid,
-                                MapAttribute: attribute,
-                                CollisionGroup: GENERATE_PHYSX_GROUP);
-
-                            break;
-                        }
-                    }
-
-                    if (mesh.NifAsset.Length < 9 || !mesh.NifAsset[..9].Equals("urn:llid:", StringComparison.CurrentCultureIgnoreCase)) {
-                        if (invalidLlids.Add(mesh.NifAsset)) {
-                            Console.WriteLine($"Non llid NifAsset: '{mesh.NifAsset}'");
-                        }
-
-                        continue;
-                    }
-
-                    // require length of "urn:llid:XXXXXXXX"
-                    if (mesh.NifAsset.Length < 9 + 8) {
-                        continue;
-                    }
-
-                    uint llid = Convert.ToUInt32(mesh.NifAsset.Substring(mesh.NifAsset.LastIndexOf(':') + 1, 8), 16);
-
-                    if (!NifParserHelper.nifBounds.TryGetValue(llid, out entityBounds)) {
-                        if (missingLlids.Add(llid)) {
-                            Console.WriteLine($"NIF with LLID {llid:X} not found");
-                        }
-
-                        continue;
-                    }
-
-                    if (isFluid && mesh is IMS2MapProperties fluidMapProperties) {
-                        fieldEntity = new FieldFluidEntity(
-                            Id: entityId,
-                            Position: placeable.Position,
-                            Rotation: placeable.Rotation,
-                            Scale: placeable.Scale,
-                            LiquidType: Enum.TryParse(fluidMapProperties.MapAttribute, out LiquidType liquidType) ? liquidType : LiquidType.none,
-                            Bounds: BoundingBox3.Transform(entityBounds, transform.Transformation),
-                            MeshLlid: llid,
-                            IsShallow: false,
-                            IsSurface: true,
-                            MapAttribute: attribute);
-                        break;
-                    }
-
-                    fieldEntity = new FieldMeshColliderEntity(
-                        Id: entityId,
-                        Position: placeable.Position,
-                        Rotation: placeable.Rotation,
-                        Scale: placeable.Scale,
-                        Bounds: BoundingBox3.Transform(entityBounds, transform.Transformation),
-                        MeshLlid: llid,
-                        MapAttribute: attribute);
-                    break;
-                case IMS2MapProperties mapProperties: // GeneratePhysX
-                    if (mapProperties.DisableCollision) {
-                        continue;
-                    }
-
-                    if (!mapProperties.GeneratePhysX) {
-                        continue;
-                    }
-
-                    var physXDimension = new Vector3(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
-
-                    if (mapProperties.GeneratePhysXDimension != Vector3.Zero) {
-                        physXDimension = mapProperties.GeneratePhysXDimension;
-                    }
-
-                    entityBounds.Min = -new Vector3(0.5f * physXDimension.X, 0.5f * physXDimension.Y, 0);
-                    entityBounds.Max = new Vector3(0.5f * physXDimension.X, 0.5f * physXDimension.Y, physXDimension.Z);
-
-                    fieldEntity = new FieldBoxColliderEntity(
-                        Id: entityId,
-                        Position: placeable.Position,
-                        Rotation: placeable.Rotation,
-                        Scale: placeable.Scale,
-                        Bounds: BoundingBox3.Transform(entityBounds, transform.Transformation),
-                        Size: physXDimension,
-                        IsWhiteBox: false,
-                        IsFluid: false,
-                        MapAttribute: MapAttribute.none,
-                        CollisionGroup: GENERATE_PHYSX_GROUP);
-                    break;
-                default:
-                    continue;
-            }
-
-            entityBounds = BoundingBox3.Transform(entityBounds, transform.Transformation);
+            BoundingBox3 entityBounds = fieldEntity.Bounds;
 
             var cellBounds = new BoundingBox3(
                 min: voxelPosition - new Vector3(HALF_BLOCK, HALF_BLOCK, 0),
