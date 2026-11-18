@@ -40,10 +40,12 @@ public static class MapColliders {
     /// the caller advances it when the result is a <see cref="FieldVibrateEntity"/>. Unknown NIF assets are reported once
     /// per set when the sets are given. With <paramref name="standing"/>, a breakable, a vibrate entity and a sellable
     /// tile make the box or mesh collider their map properties give, as any other entity does: the collision they have
-    /// while they stand, before they break or are sold.
+    /// while they stand, before they break or are sold. With <paramref name="disabledCollision"/>, an entity whose
+    /// DisableCollision is set makes the collider it would make without it.
     /// </summary>
     public static FieldEntity? Create(IMapEntity entity, IPlaceable placeable, Matrix4x4 transformation, int vibrateIndex,
-                                      ISet<string>? invalidLlids = null, ISet<uint>? missingLlids = null, bool standing = false) {
+                                      ISet<string>? invalidLlids = null, ISet<uint>? missingLlids = null, bool standing = false,
+                                      bool disabledCollision = false) {
         var entityBounds = new BoundingBox3();
 
         bool isHexId = entity.EntityId.Length == 32;
@@ -124,7 +126,7 @@ public static class MapColliders {
                 bool isFluid = false;
                 var attribute = MapAttribute.none;
                 if (entity is IMS2MapProperties meshMapProperties) {
-                    if (meshMapProperties.DisableCollision) {
+                    if (meshMapProperties.DisableCollision && !disabledCollision) {
                         return null;
                     }
 
@@ -204,7 +206,7 @@ public static class MapColliders {
                     MapAttribute: attribute);
                 return fieldEntity;
             case IMS2MapProperties mapProperties: // GeneratePhysX
-                if (mapProperties.DisableCollision) {
+                if (mapProperties.DisableCollision && !disabledCollision) {
                     return null;
                 }
 

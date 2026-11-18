@@ -17,10 +17,12 @@ namespace Maple2.File.Ingest.Helpers;
 /// <remarks>
 /// The colliders are the ones <see cref="MapColliders"/> makes for the map data, standing: PhysXWhitebox boxes,
 /// GeneratePhysX boxes and the NIF PhysX meshes of mesh colliders, breakables, vibrate entities and sellable tiles
-/// included, as the client collides with them until they break. Fluids are left out. A box is solid seen from outside; a mesh
-/// triangle counts only from its front, (v1 - v0) x (v2 - v0), as no map mesh is cooked double-sided.
-/// STILL-OPEN: which collision the official server reads (its own data, not the client's PhysX), and its reach above
-/// and below the point beyond the range seen in Tria (+15 up to -151 down).
+/// included, as the client collides with them until they break. Entities with DisableCollision set count too, with the
+/// collider they would have without it: a spawn point over such a floor (a grating, an invisible box) stands on it.
+/// Fluids are left out. A box is solid seen from outside; a mesh triangle counts only from its front,
+/// (v1 - v0) x (v2 - v0), as no map mesh is cooked double-sided.
+/// STILL-OPEN: which collision the official server reads (its own data, not the client's PhysX), and why a few points
+/// stand on a surface other than the first one (a box the point starts inside, a vibrate prop passed through).
 /// </remarks>
 public sealed class SpawnGround {
     /// <summary>How far above a spawn point the ground is looked for: half a cube.</summary>
@@ -48,7 +50,8 @@ public sealed class SpawnGround {
             }
 
             Matrix4x4 transformation = MapColliders.EntityTransform(placeable, transform);
-            switch (MapColliders.Create(entity, placeable, transformation, vibrateIndex: 0, standing: true)) {
+            switch (MapColliders.Create(entity, placeable, transformation, vibrateIndex: 0, standing: true,
+                                         disabledCollision: true)) {
                 case FieldBoxColliderEntity { IsFluid: false, IsWhiteBox: true } whitebox:
                     // A box of ShapeDimensions centred on the entity, turned and scaled with it.
                     AddBox(entity, transformation, -0.5f * whitebox.Size, 0.5f * whitebox.Size);

@@ -121,6 +121,25 @@ public class SpawnGroundTests {
         });
     }
 
+    // 02000348's spawn points over its lava stand on the gratings above it: map props with DisableCollision set, whose
+    // PhysX mesh is the ground under the points, not the lava cubes below.
+    [Test]
+    public void SpawnStandsOnDisabledCollisionGrating() {
+        string root = Environment.GetEnvironmentVariable("MS2_DATA_FOLDER")!;
+        using var exported = new M2dReader(Path.Combine(root, "Resource/Exported.m2d"));
+        IMapEntity[]? map = null;
+        new XBlockParser(exported, new FlatTypeIndex(exported)).ParseMap("02000348_bf", parsed => map = parsed.ToArray());
+        Assert.That(map, Is.Not.Null.And.Not.Empty);
+        var lavaGround = new SpawnGround(map!);
+
+        ISpawnPointNPC spawn = map!.OfType<ISpawnPointNPC>().Single(spawn => spawn.EntityName == "EventSpawnPointNPC0_207");
+        var hit = lavaGround.Hit(spawn.Position);
+        Assert.That(hit, Is.Not.Null);
+        Assert.That(hit!.Value.Source.EntityName, Does.StartWith("tr_fi_prop_grating_"));
+        Assert.That(hit.Value.Source is IMS2MapProperties { DisableCollision: true }, Is.True);
+        Assert.That(hit.Value.Z, Is.InRange(spawn.Position.Z - SpawnGround.REACH_UP, spawn.Position.Z));
+    }
+
     // A local check against npc positions the official server sent for Tria: SPAWN_GROUND_CHECK names a tsv (map id,
     // npc id, x, y, z) that is not part of the repository; skipped without it. Each row whose x, y is a spawn point of
     // that npc must have the z SpawnGround places the npc at.
