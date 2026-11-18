@@ -107,13 +107,13 @@ internal class Item {
             UnlockTime = UnlockTime,
             GlamorForges = GlamorForges,
             GachaDismantleId = GachaDismantleId,
-            Appearance = Appearance switch {
+            Appearance = Maple2.Model.Game.Item.LoadedAppearance(Appearance switch {
                 HairAppearance hair => hair,
                 DecalAppearance decal => decal,
                 CapAppearance cap => cap,
                 ColorAppearance color => color,
                 _ => new Maple2.Model.Game.ItemAppearance(default),
-            },
+            }, metadata),
             Stats = Stats,
             Enchant = Enchant,
             LimitBreak = LimitBreak,

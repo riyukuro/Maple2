@@ -63,12 +63,7 @@ public class Item : IByteSerializable, IByteDeserializable {
         }
 
         GlamorForges = (short) Metadata.Limit.GlamorForgeCount;
-        Appearance = Metadata.SlotNames.FirstOrDefault(EquipSlot.Unknown) switch {
-            EquipSlot.HR => new HairAppearance(EquipColor.None),
-            EquipSlot.FD => new DecalAppearance(EquipColor.None),
-            EquipSlot.CP => new CapAppearance(EquipColor.None),
-            _ => new ItemAppearance(EquipColor.None),
-        };
+        Appearance = NewAppearance(Metadata, EquipColor.None);
 
         Transfer = new ItemTransfer(TransferFlagOf(Metadata, Rarity), Metadata.Property.TradableCount);
         Enchant = new ItemEnchant();
@@ -285,6 +280,26 @@ public class Item : IByteSerializable, IByteDeserializable {
     // source named.
     public static int LoadedRarity(int stored, ItemMetadata metadata) =>
         stored == 1 && metadata.Property.SlotMax > 1 ? DefaultRarity(metadata) : stored;
+
+    // The appearance class of the item: the client reads the extra floats of a decal, hair or cap by its own item data
+    // (CItemData::CreateExtraData, itemdata.cpp:1430-1451), not by what is sent, and the model's first slot gives the
+    // same class for every KR item the client has.
+    public static ItemAppearance NewAppearance(ItemMetadata metadata, EquipColor color) =>
+        metadata.SlotNames.FirstOrDefault(EquipSlot.Unknown) switch {
+            EquipSlot.HR => new HairAppearance(color),
+            EquipSlot.FD => new DecalAppearance(color),
+            EquipSlot.CP => new CapAppearance(color),
+            _ => new ItemAppearance(color),
+        };
+
+    // The appearance a stored item is loaded with. A row whose appearance is not its item's class (a cap stored with
+    // the plain color appearance, as a row written outside the server can be) would be written short or long, and the
+    // client, reading the cap's floats, misreads the rest of the bag list: every item of that tab is lost. Such a row
+    // loads with its item's class and its color, the extra floats at 0; its next save stores it.
+    public static ItemAppearance LoadedAppearance(ItemAppearance stored, ItemMetadata metadata) {
+        ItemAppearance wanted = NewAppearance(metadata, stored.Color);
+        return wanted.GetType() == stored.GetType() ? stored : wanted;
+    }
 
     // The transfer flag a stored item is loaded with: a row whose rarity LoadedRarity raised takes its rule's flag at
     // that rarity when its flag is still the one its rule gave at the stored rarity (nothing changed it since), as a
