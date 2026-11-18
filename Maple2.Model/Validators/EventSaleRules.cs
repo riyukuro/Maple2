@@ -118,12 +118,13 @@ public static class EventSaleRules {
     // The extra share an exp event adds to a gain: gain * rate / 10000, cut to 32 bits unsigned as the shared rule
     // (CGameRule::CalcAdventureLevelBonusExp, commonfiles/gamerule.cpp:612); 0 for no event or no gain. The prestige
     // exp event (AdventureLevelBonusExpRate) and the guild exp event (GuildExp, whose client only shows the rate as
-    // a multiplier: UIGuildDialog, uiguilddialog.cpp:504) use it.
+    // a multiplier: UIGuildDialog, uiguilddialog.cpp:504) use it. The cut is unchecked: a Debug build checks
+    // overflow in this project (CheckForOverflowUnderflow), where the cast threw for a share over uint.MaxValue.
     public static long EventBonus(long gain, int rate) {
         if (gain <= 0 || rate <= 0) {
             return 0;
         }
-        return (uint) ((Int128) gain * rate / FullRate);
+        return unchecked((uint) ((Int128) gain * rate / FullRate));
     }
 
     // Whether a running TransferItemBound event lets item move to another character: the event's flag is on, the

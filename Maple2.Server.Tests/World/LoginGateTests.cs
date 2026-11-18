@@ -1,4 +1,5 @@
 using System;
+using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -26,6 +27,7 @@ public class LoginGateTests {
         public bool AccountOnline(long accountId) => AccountIsOnline;
     }
 
+    private DbContextOptions options = null!;
     private GameStorage storage = null!;
     private Gate gate = null!;
     private GlobalService service = null!;
@@ -33,7 +35,7 @@ public class LoginGateTests {
 
     [SetUp]
     public void SetUp() {
-        DbContextOptions options = new DbContextOptionsBuilder()
+        options = new DbContextOptionsBuilder()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
             .Options;
@@ -66,13 +68,20 @@ public class LoginGateTests {
         Assert.That(response.Code, Is.EqualTo(LoginResponse.Types.Code.Maintenance));
     }
 
+    // The account with these permissions in any build: a Debug build's CreateAccount makes every account Admin
+    // (GameStorage.CreateAccount), which let the player through both gates as a GM.
     private void Account(string name, AdminPermissions permissions) {
-        using GameStorage.Request db = storage.Context();
-        db.CreateAccount(new Account {
-            Username = name,
-            MachineId = machineId,
-            AdminPermissions = permissions,
-        }, "secret");
+        long accountId;
+        using (GameStorage.Request db = storage.Context()) {
+            accountId = db.CreateAccount(new Account {
+                Username = name,
+                MachineId = machineId,
+                AdminPermissions = permissions,
+            }, "secret").Id;
+        }
+        using var context = new Ms2Context(options);
+        context.Account.Find(accountId)!.Permissions = permissions.ToString();
+        context.SaveChanges();
     }
 
     private LoginResponse Login(string name) {
