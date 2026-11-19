@@ -408,6 +408,7 @@ public sealed class TestGameSession {
         Type core = typeof(Maple2.Server.Core.Network.Session);
         core.GetField("sendQueue", Any)!.SetValue(session, sendQueue);
         core.GetField("lastSentPackets", Any)!.SetValue(session, new ConcurrentDictionary<SendOp, byte[]>());
+        core.GetField(nameof(Maple2.Server.Core.Network.Session.UnhandledOps), Any)!.SetValue(session, new Maple2.Server.Core.Network.UnhandledOpLog());
         core.GetField("Logger", Any)!.SetValue(session, new LoggerConfiguration().WriteTo.Sink(new ErrorSink(Errors)).CreateLogger());
         Set(session, nameof(GameSession.AccountId), AccountId);
         typeof(GameSession).GetField(nameof(GameSession.WhisperedBy), Any)!.SetValue(session, new ConcurrentDictionary<string, long>());

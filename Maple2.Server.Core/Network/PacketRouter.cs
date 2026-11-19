@@ -1,4 +1,5 @@
-﻿using System.Collections.Immutable;
+﻿using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.PacketHandlers;
@@ -9,6 +10,10 @@ namespace Maple2.Server.Core.Network;
 public class PacketRouter<T> where T : Session {
     private readonly ILogger logger = Log.Logger.ForContext<T>();
     private readonly ImmutableDictionary<RecvOp, PacketHandler<T>> handlers;
+    // Packets of each op no handler took, all sessions.
+    private readonly ConcurrentDictionary<RecvOp, int> unhandledCounts = new();
+
+    public int UnhandledCount(RecvOp op) => unhandledCounts.GetValueOrDefault(op);
 
     public PacketRouter(IEnumerable<PacketHandler<T>> packetHandlers) {
         var builder = ImmutableDictionary.CreateBuilder<RecvOp, PacketHandler<T>>();
@@ -31,6 +36,12 @@ public class PacketRouter<T> where T : Session {
         }
 
         if (handler == null) {
+            // Not handled: the packet is dropped. One line per op per session, with this op's count on this server.
+            int count = unhandledCounts.AddOrUpdate(op, 1, (_, n) => n + 1);
+            if (session.UnhandledOps.ShouldLog(op)) {
+                logger.Warning("Unhandled op {OpCode} ({Count} so far) ({Session}, account {AccountId})",
+                    $"0x{(ushort) op:X4}", count, session, session.AccountId);
+            }
             return;
         }
 
