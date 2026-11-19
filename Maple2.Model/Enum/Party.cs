@@ -22,9 +22,12 @@ public enum PartyMessage {
     s_party_vote_rejected_kick_user,
 }
 
+// The sort values of the KMS 2525 client's party finder (UIPartySearchDialog, FUN_140f8ef30 and FUN_140f8f170 in
+// uipartysearchdialog.cpp: string 0xb29 "most members" 0xc, 0xb2a "least members" 0xb, 0xb2b "newest to oldest" 0x16,
+// 0xb2c "oldest to newest" 0x15).
 public enum PartySearchSort : byte {
+    LeastMembers = 11,
     MostMembers = 12,
-    LeastMembers = 13,
-    Newest = 21,
-    Oldest = 22,
+    Oldest = 21,
+    Newest = 22,
 }

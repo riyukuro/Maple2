@@ -374,6 +374,25 @@ public class PartyLookupTests {
         Assert.That(row.Size, Is.EqualTo(10));
     }
 
+    // The client's four sort bytes (PartySearchSort): 11 least members first, 12 most, 21 oldest first, 22 newest.
+    // "old" is a party of 3 made first, "new" a party of 1 made later.
+    [TestCase((byte) 11, "new")]
+    [TestCase((byte) 12, "old")]
+    [TestCase((byte) 21, "old")]
+    [TestCase((byte) 22, "new")]
+    public void FetchSortsByTheClientsSortValue(byte sort, string expected) {
+        PartyManager old = Party(3);
+        old.Party.CreationTime = 100;
+        PartyManager young = Party(1);
+        young.Party.CreationTime = 200;
+        Assert.That(partySearch.Create(old.Party, "old", true, 10, out _), Is.EqualTo(PartySearchError.none));
+        Assert.That(partySearch.Create(young.Party, "new", true, 10, out _), Is.EqualTo(PartySearchError.none));
+
+        Assert.That(Enum.IsDefined(typeof(PartySearchSort), sort), Is.True);
+        ICollection<PartySearch> rows = partySearch.FetchEntries((PartySearchSort) sort, "", 1);
+        Assert.That(rows.Select(row => row.Name).First(), Is.EqualTo(expected));
+    }
+
     // rv44 MINOR 4: the leader's own room is refused while the party searches or is matched.
     [Test]
     public void ALeadersRoomIsRefusedWhileSearchingOrMatched() {
