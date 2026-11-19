@@ -113,6 +113,9 @@ public class WebController : ControllerBase {
     [HttpPost("ruq.aspx")]
     [RequestSizeLimit(SmallRequestLimit)]
     public async Task<IResult> Info() {
+        if (!MenteeSearchLimiter.TryAcquire(AddressRateLimiter.Key(HttpContext.Connection.RemoteIpAddress), Environment.TickCount64)) {
+            return Results.File(ZlibCompress(MentorPacket.MenteeListRefused()), "application/octet-stream");
+        }
         Stream bodyStream = Request.Body;
         var memoryStream = new MemoryStream();
         await bodyStream.CopyToAsync(memoryStream);
@@ -134,6 +137,14 @@ public class WebController : ControllerBase {
     public record MenteeSearchRequest(int UserType, long AccountId, long CharacterId, int MentoringId, int Option);
 
     public const int MenteeSearchSize = 4 + 8 + 8 + 4 + 4;
+
+    // The request names its account and character and carries no token, so anyone who reaches this port can ask for
+    // the list of recent players under any ids. The client asks once each time the mentor page opens
+    // (UIInviteMentoringDialog::OnLoadComplete, uiinvitementoringdialog.cpp:140 -> CMenteeSearchManager::RequestSearch),
+    // so each address is held to a few searches a minute. Chosen here: 10 a minute.
+    public const int MenteeSearchLimit = 10;
+    public static readonly TimeSpan MenteeSearchWindow = TimeSpan.FromMinutes(1);
+    private static readonly AddressRateLimiter MenteeSearchLimiter = new(MenteeSearchLimit, MenteeSearchWindow);
 
     public static MenteeSearchRequest? ReadMenteeSearch(byte[] body) {
         if (body.Length < MenteeSearchSize) {

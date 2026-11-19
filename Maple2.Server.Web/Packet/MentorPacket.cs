@@ -29,4 +29,13 @@ public static class MentorPacket {
 
         return pWriter;
     }
+
+    // A refused search (WebController.MenteeSearchLimit). The client reads a result other than 0 as a failed search
+    // and shows s_mentoring_error_request_mentee_list_search_error (ResponseMenteeList::FUN_140b6dfb0,
+    // CMenteeSearchManager::OnWebResult, menteesearch.cpp:83-101, :226-259); the list it shows is not changed.
+    public static ByteWriter MenteeListRefused() {
+        var pWriter = new ByteWriter();
+        pWriter.WriteInt(1);
+        return pWriter;
+    }
 }
