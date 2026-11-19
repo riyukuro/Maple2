@@ -141,7 +141,8 @@ public class WebController : ControllerBase {
     // The request names its account and character and carries no token, so anyone who reaches this port can ask for
     // the list of recent players under any ids. The client asks once each time the mentor page opens
     // (UIInviteMentoringDialog::OnLoadComplete, uiinvitementoringdialog.cpp:140 -> CMenteeSearchManager::RequestSearch),
-    // so each address is held to a few searches a minute. Chosen here: 10 a minute.
+    // so each address (an IPv6 /56) is held to a few searches a minute, for at most
+    // AddressRateLimiter.DefaultMaxTracked addresses at a time. Chosen here: 10 a minute.
     public const int MenteeSearchLimit = 10;
     public static readonly TimeSpan MenteeSearchWindow = TimeSpan.FromMinutes(1);
     private static readonly AddressRateLimiter MenteeSearchLimiter = new(MenteeSearchLimit, MenteeSearchWindow);
