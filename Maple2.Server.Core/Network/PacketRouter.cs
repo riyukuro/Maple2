@@ -36,6 +36,8 @@ public class PacketRouter<T> where T : Session {
         }
 
         if (handler == null) {
+            // An op of the other server's handlers: dropped, not counted (Session.OpsHandledElsewhere).
+            if (session.OpsHandledElsewhere.Contains(op)) return;
             // Not handled: the packet is dropped. One line per op per session, with this op's count on this server.
             int count = unhandledCounts.AddOrUpdate(op, 1, (_, n) => n + 1);
             if (session.UnhandledOps.ShouldLog(op)) {

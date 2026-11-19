@@ -193,6 +193,11 @@ public abstract class Session : IDisposable {
     // move to another server.
     public virtual bool DropsPackets => false;
 
+    // Ops the client also sends to this server that only the other server handles (the login server's for a game
+    // session): PacketRouter drops them without the unhandled-op line or count.
+    public virtual IReadOnlySet<RecvOp> OpsHandledElsewhere => NoOps;
+    private static readonly IReadOnlySet<RecvOp> NoOps = new HashSet<RecvOp>();
+
     // Held by PacketRouter around each handler it runs on the receive thread. A game session's move save takes it to
     // set its flag (GameSession.MigrationSave), so the save never runs beside such a handler: one that already runs
     // ends first, and one read after the flag is set is dropped.

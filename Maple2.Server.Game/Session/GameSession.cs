@@ -69,6 +69,18 @@ public sealed partial class GameSession : Core.Network.Session {
     // Every packet after that save is dropped, also those of handlers that run on the receive thread; and every
     // packet once the session closes (ClosePackets).
     public override bool DropsPackets => preMigrationSaved || packetsClosed;
+    // The ops only the login server's handlers take (Maple2.Server.Login/PacketHandlers). The client sends ServerEnter on
+    // each game server enter too (b0 00, language 0).
+    public static readonly IReadOnlySet<RecvOp> LoginServerOps = new HashSet<RecvOp> {
+        RecvOp.CharacterManagement,
+        RecvOp.CheckDeleteAccount,
+        RecvOp.DeleteAccount,
+        RecvOp.NoticeDialog,
+        RecvOp.RequestServerList,
+        RecvOp.ResponseLogin,
+        RecvOp.ServerEnter,
+    };
+    public override IReadOnlySet<RecvOp> OpsHandledElsewhere => LoginServerOps;
     private volatile bool packetsClosed;
     // How long a closing session waits for its field's running packet batch to end (ClosePackets).
     internal static TimeSpan PacketBatchWait { get; set; } = TimeSpan.FromSeconds(10); // tests shorten it
