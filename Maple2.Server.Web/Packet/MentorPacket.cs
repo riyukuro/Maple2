@@ -14,8 +14,12 @@ public static class MentorPacket {
         pWriter.WriteInt(mentees.Count);
 
         foreach (PlayerInfo mentee in mentees) {
+            // Both ids are the character's (ReadMentor, menteesearch.cpp:351). The second is the row's charSN, which the
+            // right-click menu keeps as the character id for character info, trade, report and the rest
+            // (uiinvitementoringdialog.cpp:322 OnPopupMenu -> UIPopUpMenu::FUN_141a7f090, uipartydialog.cpp:2111). The
+            // first is only sent back with the invite, where the server keys on the name.
             pWriter.WriteLong(mentee.CharacterId);
-            pWriter.WriteLong(mentee.AccountId);
+            pWriter.WriteLong(mentee.CharacterId);
             pWriter.WriteUnicodeStringWithLength(mentee.Name);
             pWriter.WriteUnicodeStringWithLength(mentee.Picture);
             pWriter.WriteInt(mentee.Level);
