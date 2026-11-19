@@ -115,9 +115,10 @@ public class LapenshardHandler : FieldPacketHandler {
         if (!TryUpgrade(session, lapenshardUid, lapenshardId, slot, fodders, out Item? toMail)) {
             // A refused upgrade answers as a failed one. The client sends mode 5 and waits in state 2 with the upgrade
             // animation running; only a Lapenshard 5 of the source's item id leaves that state, and with success false
-            // it shows the result page as failed (uilapenshardsystemdialog.cpp:1788 vfunc_9 case 5 -> vfunc_2(7) ->
-            // ShowUpgradeResult(false), :2192 SendLapenshardMode5). Nothing was taken.
-            session.Send(LapenshardPacket.Upgrade(lapenshardUid, lapenshardId, slot, success: false));
+            // it shows the result page as failed (src/ms2/guess/uilapenshardsystemdialog.cpp:1788 vfunc_9 case 5 ->
+            // vfunc_2(7) -> ShowUpgradeResult(false), :2184 SendLapenshardMode5). Nothing was taken. The uid is the one
+            // the success answer would carry (0 for a bag lapenshard); the client reads only the item id and the flag.
+            session.Send(LapenshardPacket.Upgrade(lapenshardUid > 0 ? 0 : lapenshardUid, lapenshardId, slot, success: false));
             return;
         }
 

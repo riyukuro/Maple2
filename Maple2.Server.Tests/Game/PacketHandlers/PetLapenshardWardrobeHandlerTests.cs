@@ -360,7 +360,7 @@ public class PetLapenshardWardrobeHandlerTests {
             writer.WriteInt(4);
         }));
 
-        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(LapenshardPacket.Upgrade(shards.Uid, ShardId, (LapenshardSlot) 0, success: false)) }));
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(LapenshardPacket.Upgrade(0, ShardId, (LapenshardSlot) 0, success: false)) }));
         Assert.That(session.Currency.Meso, Is.EqualTo(5000));
         Assert.That(session.Item.Inventory.Get(shards.Uid)?.Amount, Is.EqualTo(9));
     }
@@ -401,7 +401,7 @@ public class PetLapenshardWardrobeHandlerTests {
             writer.WriteInt(4);
         }));
 
-        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(LapenshardPacket.Upgrade(shard.Uid, ShardId, (LapenshardSlot) 0, success: false)) }));
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(LapenshardPacket.Upgrade(0, ShardId, (LapenshardSlot) 0, success: false)) }));
         Assert.That(session.Currency.Meso, Is.EqualTo(5000));
         Assert.That(session.Item.Inventory.Get(fodder.Uid)?.Amount, Is.EqualTo(4));
         Assert.That(session.Item.Inventory.Get(shard.Uid)?.Id, Is.EqualTo(ShardId));
@@ -562,7 +562,7 @@ public class PetLapenshardWardrobeHandlerTests {
 
         Upgrade();
 
-        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(LapenshardPacket.Upgrade(shards.Uid, ShardId, (LapenshardSlot) 0, success: false)) }));
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(LapenshardPacket.Upgrade(0, ShardId, (LapenshardSlot) 0, success: false)) }));
         Assert.That(session.Currency.Meso, Is.EqualTo(4000));
         Assert.That(session.Item.Inventory.Get(crystals.Uid)!.Amount, Is.EqualTo(30));
         Assert.That(session.Item.Inventory.Find(NextShardId).Sum(item => item.Amount), Is.EqualTo(1));
