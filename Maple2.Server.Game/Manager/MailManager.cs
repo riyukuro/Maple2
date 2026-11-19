@@ -303,7 +303,8 @@ public sealed class MailManager {
 
         // Mesos and merets attached as items (a meso bag) go into the wallet under its cap (CurrencyManager.ChangeMeso,
         // ChangeMeret), and the part over the cap was dropped. They stay on the mail unless they fit, refused with the
-        // generic mail error box as the mail's own mesos over the cap are (CollectCurrency).
+        // generic mail error box as the mail's own mesos over the cap are (CollectCurrency). Both caps are
+        // long.MaxValue (Constant.MaxMeso, MaxMeret), so this only refuses a wallet near that edge.
         (long itemMeso, long itemMeret) = MailRules.ItemCurrency(mail.Items);
         if (session.Currency.CanAddMeso(itemMeso) != itemMeso || session.Currency.CanAddMeret(itemMeret) != itemMeret) {
             return MailError.s_mail_error;

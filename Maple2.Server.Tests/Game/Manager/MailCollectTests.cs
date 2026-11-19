@@ -15,11 +15,13 @@ namespace Maple2.Server.Tests.Game.Manager;
 // Each attachment of a mail is given once (MailManager.Collect re-reads the mail from the database).
 public class MailCollectTests {
     private const int MesoItem = 90000001;
+    private const int MeretItem = 90000004;
     private TestGameSession test = null!;
 
     private GameSession Start() {
         test = new TestGameSession();
         test.Register(TestGameSession.Metadata(MesoItem));
+        test.Register(TestGameSession.Metadata(MeretItem));
         return test.Start();
     }
 
@@ -268,6 +270,77 @@ public class MailCollectTests {
             Assert.That(collected, Is.EqualTo(MailError.none));
             Assert.That(session.Currency.Meso, Is.EqualTo(1000));
             Assert.That(Stored(mailId).Items, Is.Empty);
+        });
+    }
+
+    // A meret item over the meret cap: the collect is refused before anything is given (CollectCheck), so the
+    // mail's own mesos, which would fit, stay on it with the item and the mail stays unread. Once the merets fit,
+    // one collect gives both.
+    [Test]
+    public void Collect_MeretItemOverTheCap_TakesNothing() {
+        GameSession session = Start();
+        StoredItem merets = session.Field!.ItemDrop.CreateItem(MeretItem)!;
+        merets.Amount = 10;
+        session.Currency.Meret = Constant.MaxMeret - 5;
+        long mesoBefore = session.Currency.Meso;
+        long mailId = CurrencyMail(session, 100, 0, merets);
+        test.TakeSent();
+
+        MailError refused = session.Mail.Collect(mailId);
+        byte[] refusedModes = MailModes();
+        long mesoAfterRefused = session.Currency.Meso;
+        long meretAfterRefused = session.Currency.Meret;
+        Mail left = Stored(mailId);
+
+        session.Currency.Meret = 0;
+        MailError collected = session.Mail.Collect(mailId);
+
+        Assert.Multiple(() => {
+            Assert.That(refused, Is.EqualTo(MailError.s_mail_error));
+            Assert.That(refusedModes, Is.Empty);
+            Assert.That(mesoAfterRefused, Is.EqualTo(mesoBefore));
+            Assert.That(meretAfterRefused, Is.EqualTo(Constant.MaxMeret - 5));
+            Assert.That(left.ReadTime, Is.EqualTo(0));
+            Assert.That(left.Items, Has.Count.EqualTo(1));
+            Assert.That(left.MesoCollectTime, Is.EqualTo(0));
+
+            Assert.That(collected, Is.EqualTo(MailError.none));
+            Assert.That(session.Currency.Meret, Is.EqualTo(10));
+            Assert.That(session.Currency.Meso - mesoBefore, Is.EqualTo(100));
+            Assert.That(Stored(mailId).Items, Is.Empty);
+        });
+    }
+
+    // The item mesos fit but the mail's own mesos then do not: the item is given (mode 10 for its slot) and taken off
+    // the mail, the mesos stay on it, and the collect is refused. The next collect with room gives the mesos (mode 10)
+    // and closes the mail (mode 11).
+    [Test]
+    public void Collect_MesoItemFits_MailMesosOverTheCap_GivesTheItemOnly() {
+        GameSession session = Start();
+        StoredItem meso = session.Field!.ItemDrop.CreateItem(MesoItem)!;
+        meso.Amount = 30;
+        session.Currency.Meso = Constant.MaxMeso - 40;
+        long mailId = CurrencyMail(session, 100, 0, meso);
+        test.TakeSent();
+
+        MailError refused = session.Mail.Collect(mailId);
+        byte[] refusedModes = MailModes();
+        long walletAfterRefused = session.Currency.Meso;
+        Mail left = Stored(mailId);
+
+        session.Currency.Meso = 0;
+        MailError collected = session.Mail.Collect(mailId);
+
+        Assert.Multiple(() => {
+            Assert.That(refused, Is.EqualTo(MailError.s_mail_error));
+            Assert.That(refusedModes, Is.EqualTo(new byte[] { 2, 10 }), "read, then the item slot");
+            Assert.That(walletAfterRefused, Is.EqualTo(Constant.MaxMeso - 10));
+            Assert.That(left.Items, Is.Empty);
+            Assert.That(left.MesoCollectTime, Is.EqualTo(0));
+
+            Assert.That(collected, Is.EqualTo(MailError.none));
+            Assert.That(MailModes(), Is.EqualTo(new byte[] { 10, 11 }), "the mesos, then the close");
+            Assert.That(session.Currency.Meso, Is.EqualTo(100));
         });
     }
 
