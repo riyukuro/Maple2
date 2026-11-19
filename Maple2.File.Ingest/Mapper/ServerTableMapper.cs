@@ -216,6 +216,10 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             Name = ServerTableNames.PROMOTION,
             Table = ParsePromotion(),
         };
+        yield return new ServerTableMetadata {
+            Name = ServerTableNames.GLOBAL_FACTOR,
+            Table = ParseGlobalFactor(),
+        };
     }
 
     // The features the rows were filtered by (FeatureLevels: the data folder's tables, or the played client's), in name
@@ -3671,6 +3675,37 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             }
         }
         return null;
+    }
+
+    // The locale's expcontrol.xml and mesocontrol.xml, else the NA ones.
+    private GlobalFactorTable ParseGlobalFactor() {
+        GlobalFactorTable table = MapGlobalFactor(ReadServerDocument("expcontrol.xml"), ReadServerDocument("mesocontrol.xml"));
+        int changed = table.ExpRates.Concat(table.MesoRates).Sum(rates => rates.Skip(1).Count(rate => rate != 1f));
+        Console.WriteLine($"GlobalFactor: {changed} rates other than 1");
+        return table;
+    }
+
+    // A rate is read by its kind's column (GlobalFactorTable.ExpKinds, MesoKinds); a level outside 1 to 99, or a rate
+    // that is missing, unreadable or below 0, stays 1.0.
+    public static GlobalFactorTable MapGlobalFactor(XmlDocument? exp, XmlDocument? meso) {
+        return new GlobalFactorTable(Rates(exp, "/ms2/exp", GlobalFactorTable.ExpKinds), Rates(meso, "/ms2/meso", GlobalFactorTable.MesoKinds));
+
+        static float[][] Rates(XmlDocument? document, string rows, string[] kinds) {
+            float[][] rates = GlobalFactorTable.Ones(kinds.Length);
+            foreach (XmlElement row in document?.SelectNodes(rows)?.OfType<XmlElement>() ?? []) {
+                if (!int.TryParse(row.GetAttribute("lv"), NumberStyles.Integer, CultureInfo.InvariantCulture, out int level)
+                    || level is < 1 or > GlobalFactorTable.MaxLevel) {
+                    continue;
+                }
+                for (int kind = 0; kind < kinds.Length; kind++) {
+                    if (float.TryParse(row.GetAttribute(kinds[kind]), NumberStyles.Float, CultureInfo.InvariantCulture, out float rate)
+                        && float.IsFinite(rate) && rate >= 0) {
+                        rates[kind][level] = rate;
+                    }
+                }
+            }
+            return rates;
+        }
     }
 
     // Play bonus rows keep their file order (the client's row index is the claim's index); a row or gift without an

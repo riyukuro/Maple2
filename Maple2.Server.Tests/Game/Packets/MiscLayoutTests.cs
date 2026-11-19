@@ -99,13 +99,26 @@ public class MiscLayoutTests {
             Is.EqualTo(Hex(Packet.Of(Maple2.Server.Core.Constants.SendOp.CurrencyToken)) + "04" + Uid + "0500000000000000" + "00000000" + "0200000000000000"));
     }
 
-    // Twice three tables: u8 kind, then 99 floats.
+    // Twice three tables: u8 kind, then the floats of levels 1 to 99. The exp kinds are the client's quest kinds 5, 6
+    // and 7 (questdata.cpp:2363-2371), the meso kinds 0, 1 and 2; each level's rate is the table's.
     [Test]
     public void GlobalFactor() {
-        byte[] bytes = GlobalFactorPacket.Rates().ToArray();
-        Assert.That(bytes.Length, Is.EqualTo(2 + 6 * (1 + 99 * 4)));
-        Assert.That(bytes[2 + 397], Is.EqualTo(1));
-        Assert.That(BitConverter.ToSingle(bytes, 3), Is.EqualTo(1f));
+        GlobalFactorTable table = GlobalFactorTable.Default;
+        table.ExpRates[6][10] = 0.5f;
+        table.MesoRates[2][99] = 2f;
+        table.ExpRates[0][1] = 3f;
+        byte[] bytes = GlobalFactorPacket.Rates(table).ToArray();
+        const int size = 1 + 99 * 4;
+        Assert.Multiple(() => {
+            Assert.That(bytes.Length, Is.EqualTo(2 + 6 * size));
+            Assert.That(Enumerable.Range(0, 6).Select(index => bytes[2 + index * size]), Is.EqualTo(new byte[] { 5, 6, 7, 0, 1, 2 }));
+            Assert.That(BitConverter.ToSingle(bytes, 3), Is.EqualTo(1f));
+            Assert.That(BitConverter.ToSingle(bytes, 2 + size + 1 + 9 * 4), Is.EqualTo(0.5f));
+            Assert.That(BitConverter.ToSingle(bytes, 2 + 5 * size + 1 + 98 * 4), Is.EqualTo(2f));
+            // Kind 0 (common npc kills) is not sent.
+            Assert.That(Enumerable.Range(0, 6).SelectMany(index => Enumerable.Range(0, 99).Select(level => BitConverter.ToSingle(bytes, 2 + index * size + 1 + level * 4))),
+                Has.None.EqualTo(3f));
+        });
     }
 
     [Test]

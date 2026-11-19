@@ -16,6 +16,6 @@ public class GlobalFactorHandler : PacketHandler<GameSession> {
         if (Interlocked.Exchange(ref session.GlobalFactorSent, 1) != 0) {
             return;
         }
-        session.Send(GlobalFactorPacket.Rates());
+        session.Send(GlobalFactorPacket.Rates(session.ServerTableMetadata.GlobalFactorTable));
     }
 }

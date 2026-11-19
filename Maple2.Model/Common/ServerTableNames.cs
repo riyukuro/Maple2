@@ -37,4 +37,5 @@ public static class ServerTableNames {
     public const string PC_BANG = "PcBangBonus.xml";
     public const string ENCHANT_LIMIT = "enchantLimitTable.xml";
     public const string PROMOTION = "promotionContents.xml";
+    public const string GLOBAL_FACTOR = "expcontrol.xml";
 }

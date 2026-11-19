@@ -170,6 +170,8 @@ public sealed class TestGameSession {
             .ToDictionary(subType => subType, _ => new EnchantLimitTable.Limit(0, 99, ItemEnchantRules.MaxGrade))));
         // Every counted condition reads the promotionContents rows: none until a test sets them.
         SetServerTable(new PromotionTable([]));
+        // The global factor request reads the rate tables: 1.0 until a test sets them.
+        SetServerTable(GlobalFactorTable.Default);
 
         // The rows a login finds. The account row is added directly: CreateAccount hashes a password, which is slow.
         string name = Guid.NewGuid().ToString("N")[..12];

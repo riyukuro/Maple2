@@ -60,4 +60,5 @@ public class ServerTableMetadata {
 [JsonDerivedType(typeof(PcBangTable), typeDiscriminator: "pcBang")]
 [JsonDerivedType(typeof(EnchantLimitTable), typeDiscriminator: "enchantLimit")]
 [JsonDerivedType(typeof(PromotionTable), typeDiscriminator: "promotion")]
+[JsonDerivedType(typeof(GlobalFactorTable), typeDiscriminator: "globalFactor")]
 public abstract record ServerTable;
