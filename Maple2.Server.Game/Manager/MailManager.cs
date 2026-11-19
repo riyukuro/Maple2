@@ -193,23 +193,24 @@ public sealed class MailManager {
 
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         MailError error;
-        bool mesoLeft = false;
+        // The items are given first, then the currency: the merets can only be given by the collect that leaves
+        // nothing on the mail (CollectCurrency), so they wait until no item is left.
         lock (session.Item) {
             error = CollectCheck(db, mail, now);
+            if (error == MailError.none) {
+                error = CollectItems(mail, now);
+            }
         }
         // The currency is stored with the collect mark under the account lock, which is taken before the bag lock
         // (a purchase's after-commit work takes the bag lock under the account lock).
         if (error == MailError.none) {
-            error = CollectCurrency(mail, now, out mesoLeft);
-        }
-        lock (session.Item) {
-            if (error == MailError.none) {
-                error = CollectItems(mail, now, mesoLeft);
-            }
-            // The rest was given; the mesos that did not fit stay on the mail (CollectCurrency).
-            if (error == MailError.none && mesoLeft) {
+            error = CollectCurrency(mail, now, mail.Items.Count > 0, out bool currencyLeft);
+            // The rest was given; the currency that did not fit stays on the mail.
+            if (error == MailError.none && currencyLeft) {
                 error = MailError.s_mail_error;
             }
+        }
+        lock (session.Item) {
             // Lock order: session.Item, then inbox (nothing takes inbox, then session.Item).
             lock (inbox) {
                 inboxMail.Update(mail);
@@ -329,33 +330,41 @@ public sealed class MailManager {
     // The mail's mesos and merets are stored as collected together with the balance that holds them, in one
     // transaction, and are taken back from the balance when that store fails. The collect mark used to be committed
     // at once and the currency held in memory until the next session save, so a crash in between lost it.
-    // Mesos that would take the wallet over MaxMeso are not collected and stay on the mail (mesoLeft): they were
+    // Mesos that would take the wallet over MaxMeso are not collected and stay on the mail (currencyLeft): they were
     // collected anyway and the part over the cap was lost. The client checks no wallet before a collect and has no
     // mail text for a full one (OnMail mode 0x14 has none), so the refusal is the generic mail error box.
-    private MailError CollectCurrency(Mail mail, long now, out bool mesoLeft) {
+    // The client has a collect notice of its own for the mesos and for each item slot (OnMail mode 10,
+    // scenestategame.cpp:11547: ClaimRangeB0 or SetAttachmentReceiveTime), but none for the merets and game merets:
+    // only mode 11 (scenestategame.cpp:11563) marks them collected (ClaimRangeC0, FUN_140690e80), and it marks the
+    // mesos and every slot too. So the merets are given only by the collect that sends mode 11: when no item is left
+    // (itemsLeft false) and the mesos, merets and game merets all fit. Merets given by a collect that then stopped
+    // were never reported, and the client listed them as still on the mail; merets left over their cap were shown
+    // collected by mode 11. currencyLeft: something stays on the mail and mode 11 was not sent.
+    private MailError CollectCurrency(Mail mail, long now, bool itemsLeft, out bool currencyLeft) {
         (long Meso, long Meret, long GameMeret) read = (mail.MesoCollectTime, mail.MeretCollectTime, mail.GameMeretCollectTime);
-        mesoLeft = false;
-        bool collectMeso = false;
-        if (!mail.MesoCollected()) {
-            if (session.Currency.CanAddMeso(mail.Meso) == mail.Meso) {
-                mail.MesoCollectTime = now;
-                collectMeso = true;
-            } else {
-                mesoLeft = true;
-            }
+        bool mesoFits = mail.MesoCollected() || session.Currency.CanAddMeso(mail.Meso) == mail.Meso;
+        bool meretFits = mail.MeretCollected() || session.Currency.CanAddMeret(mail.Meret) == mail.Meret;
+        bool gameMeretFits = mail.GameMeretCollected() || session.Currency.CanAddGameMeret(mail.GameMeret) == mail.GameMeret;
+        bool closes = !itemsLeft && mesoFits && meretFits && gameMeretFits;
+        currencyLeft = !closes;
+
+        bool collectMeso = !mail.MesoCollected() && mesoFits;
+        bool collectMeret = closes && !mail.MeretCollected();
+        bool collectGameMeret = closes && !mail.GameMeretCollected();
+        if (collectMeso) {
+            mail.MesoCollectTime = now;
         }
-        bool collectMeret = false;
-        if (!mail.MeretCollected() && session.Currency.CanAddMeret(mail.Meret) == mail.Meret) {
+        if (collectMeret) {
             mail.MeretCollectTime = now;
-            collectMeret = true;
         }
-        bool collectGameMeret = false;
-        if (!mail.GameMeretCollected() && session.Currency.CanAddGameMeret(mail.GameMeret) == mail.GameMeret) {
+        if (collectGameMeret) {
             mail.GameMeretCollectTime = now;
-            collectGameMeret = true;
         }
 
         if (!collectMeso && !collectMeret && !collectGameMeret) {
+            if (closes) {
+                session.Send(MailPacket.CollectRead(mail));
+            }
             return MailError.none;
         }
 
@@ -365,14 +374,14 @@ public sealed class MailManager {
         bool lostRace = false;
         (long Meso, long Meret, long GameMeret) added = default;
         if (!session.TrySavePurchase(purchase => {
-                if (!purchase.CollectMail(mail, read)) {
-                    lostRace = true;
-                    return false;
-                }
-                added = session.Currency.AddUnsent(collectMeso ? mail.Meso : 0, collectMeret ? mail.Meret : 0,
-                    collectGameMeret ? mail.GameMeret : 0);
-                return purchase.SaveCurrency(session.Player);
-            }, () => lostRace, out _)) {
+            if (!purchase.CollectMail(mail, read)) {
+                lostRace = true;
+                return false;
+            }
+            added = session.Currency.AddUnsent(collectMeso ? mail.Meso : 0, collectMeret ? mail.Meret : 0,
+                collectGameMeret ? mail.GameMeret : 0);
+            return purchase.SaveCurrency(session.Player);
+        }, () => lostRace, out _)) {
             (mail.MesoCollectTime, mail.MeretCollectTime, mail.GameMeretCollectTime) = read;
             if (added != default) {
                 session.Currency.TakeBackAdded(added);
@@ -384,12 +393,15 @@ public sealed class MailManager {
         if (collectMeso) {
             session.Send(MailPacket.CollectMeso(mail.Id, now));
         }
+        if (closes) {
+            session.Send(MailPacket.CollectRead(mail));
+        }
         return MailError.none;
     }
 
-    // Items on input mail will be cleared.
-    // mesoLeft: the mail's mesos were not collected; mode 11 would show them as collected (it claims the currencies too).
-    private MailError CollectItems(Mail mail, long now, bool mesoLeft) {
+    // Items on input mail will be cleared. Each item given is reported at once (mode 10 with its slot); the closing
+    // packet (mode 11) is CollectCurrency's.
+    private MailError CollectItems(Mail mail, long now) {
         // The slot of an attachment is its place in the list (Mail.WriteTo).
         MailError error = MailError.none;
         for (int i = mail.Items.Count - 1; i >= 0; i--) {
@@ -402,11 +414,6 @@ public sealed class MailManager {
 
             mail.Items.RemoveAt(i);
             session.Send(MailPacket.CollectItem(mail.Id, (byte) i, now));
-        }
-
-        // What was given is always reported; the closing packet only when nothing is left behind.
-        if (error == MailError.none && !mesoLeft) {
-            session.Send(MailPacket.CollectRead(mail));
         }
         return error;
     }
