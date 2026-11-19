@@ -22,7 +22,9 @@ namespace Maple2.File.Ingest.Helpers;
 /// Fluids are left out. A box is solid seen from outside; a mesh triangle counts only from its front,
 /// (v1 - v0) x (v2 - v0), as no map mesh is cooked double-sided.
 /// STILL-OPEN: which collision the official server reads (its own data, not the client's PhysX), and why a few points
-/// stand on a surface other than the first one (a box the point starts inside, a vibrate prop passed through).
+/// stand on a surface other than the first one (a box the point starts inside, a vibrate prop passed through), and why
+/// the official z is a whole number 1 lower than this on MS2CubeProp deform bridge and piece cubes (ground - 2) and 3
+/// lower on vibrate steel stairs. The z placed here is not rounded.
 /// </remarks>
 public sealed class SpawnGround {
     /// <summary>How far above a spawn point the ground is looked for: half a cube.</summary>

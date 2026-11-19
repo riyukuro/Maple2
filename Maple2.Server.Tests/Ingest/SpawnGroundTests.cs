@@ -16,7 +16,8 @@ using Maple2.File.Parser.MapXBlock;
 namespace Maple2.Server.Tests.Ingest;
 
 // The ground pass the ingest runs on npc spawn points (SpawnGround), on Tria (02000001) from the client's map data.
-// Needs MS2_DATA_FOLDER (the client's Data folder); skipped without it.
+// Needs MS2_DATA_FOLDER (the client's Data folder): every test here calls Assert.Ignore without it, so CI runs none of
+// them. MatchesOfficialPositions also needs SPAWN_GROUND_CHECK.
 [NonParallelizable]
 public class SpawnGroundTests {
     private const string TRIA = "02000001_tw_tria";
@@ -83,7 +84,8 @@ public class SpawnGroundTests {
     }
 
     // The spear guards on the stairs stand at z 4125, inside the stair cube at z 4050, which has no GeneratePhysX box:
-    // its ground is the stair's NIF PhysX mesh, whose surface is at 4140 under both points (15 above them).
+    // its ground is the stair's NIF PhysX mesh, whose surface is at 4140 under both points (15 above them). By the rule
+    // both spear guards stand 1 under that surface, so the ground is used upward too.
     [TestCase("11000451_spear_03_Left", 750f, 1050f)]
     [TestCase("11000451_spear_03_Right", 1050f, 750f)]
     public void StairSpawnStandsOnStairSurface(string name, float cubeX, float cubeY) {
