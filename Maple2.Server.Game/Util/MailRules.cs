@@ -57,6 +57,24 @@ public static class MailRules {
         return mail.Items.Any(item => item.IsLockedOrUnlocking());
     }
 
+    // The mesos and merets the mail's currency items add when collected (InventoryManager.AddCurrency: 90000001 to
+    // 90000003 go to the mesos, 90000004, 90000016 and 90000020 to the merets).
+    public static (long Meso, long Meret) ItemCurrency(IEnumerable<Item> items) {
+        long meso = 0;
+        long meret = 0;
+        foreach (Item item in items) {
+            switch (item.Id) {
+                case 90000001 or 90000002 or 90000003:
+                    meso += item.Amount;
+                    break;
+                case 90000004 or 90000016 or 90000020:
+                    meret += item.Amount;
+                    break;
+            }
+        }
+        return (meso, meret);
+    }
+
     // What refuses a collect before anything is given.
     public static MailError CollectError(Mail mail, long now) {
         if (!HasUncollected(mail)) {

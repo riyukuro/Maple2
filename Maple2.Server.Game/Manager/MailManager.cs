@@ -301,6 +301,14 @@ public sealed class MailManager {
             return refused;
         }
 
+        // Mesos and merets attached as items (a meso bag) go into the wallet under its cap (CurrencyManager.ChangeMeso,
+        // ChangeMeret), and the part over the cap was dropped. They stay on the mail unless they fit, refused with the
+        // generic mail error box as the mail's own mesos over the cap are (CollectCurrency).
+        (long itemMeso, long itemMeret) = MailRules.ItemCurrency(mail.Items);
+        if (session.Currency.CanAddMeso(itemMeso) != itemMeso || session.Currency.CanAddMeret(itemMeret) != itemMeret) {
+            return MailError.s_mail_error;
+        }
+
         // Nothing is given unless every item fits (existing stacks count) and can be added now.
         // Furnishing goes into furnishing storage (InventoryManager.Add), which must take all of it; it needs no bag slot.
         List<Item> furnishing = mail.Items.Where(item => item.Type.IsFurnishing).ToList();
@@ -340,6 +348,9 @@ public sealed class MailManager {
     // (itemsLeft false) and the mesos, merets and game merets all fit. Merets given by a collect that then stopped
     // were never reported, and the client listed them as still on the mail; merets left over their cap were shown
     // collected by mode 11. currencyLeft: something stays on the mail and mode 11 was not sent.
+    // So a full meso wallet keeps the merets on the mail too, until the mesos fit. A mail expires with what is left on
+    // it (DropExpired), and every mail gets the MailExpiryDays expiry when stored without one (GameStorage.CreateMail),
+    // so merets held back this way are lost if the wallet stays full until then.
     private MailError CollectCurrency(Mail mail, long now, bool itemsLeft, out bool currencyLeft) {
         (long Meso, long Meret, long GameMeret) read = (mail.MesoCollectTime, mail.MeretCollectTime, mail.GameMeretCollectTime);
         bool mesoFits = mail.MesoCollected() || session.Currency.CanAddMeso(mail.Meso) == mail.Meso;

@@ -133,6 +133,45 @@ public class MailModeTests {
         });
     }
 
+    // Collect all stops at a mail whose merets do not fit: the mail before it is collected, that mail gives its mesos
+    // only, the error box is sent (mode 20 with the collect-all code) and the mail after it is left as it was. Once
+    // the merets fit, the same request collects the rest, passing over the mail already collected.
+    [Test]
+    public void CollectAll_StoppedByMeretsOverTheCap_LeavesTheRest() {
+        Begin();
+        Mail first = StoreMail(meso: 100);
+        Mail capped = StoreMail(meso: 200, meret: 7);
+        Mail last = StoreMail(meso: 400);
+        GameSession session = Login();
+        session.Currency.Meret = Constant.MaxMeret - 2;
+
+        Request(session, 19, first.Id, capped.Id, last.Id);
+        long mesoAfterStop = session.Currency.Meso;
+        long meretAfterStop = session.Currency.Meret;
+        List<string> stopSent = MailSent().Select(Convert.ToHexString).ToList();
+        Mail cappedAfterStop = Stored(capped.Id)!;
+        long lastAfterStop = Stored(last.Id)!.MesoCollectTime;
+
+        session.Currency.Meret = 0;
+        Request(session, 19, first.Id, capped.Id, last.Id);
+
+        Assert.Multiple(() => {
+            Assert.That(mesoAfterStop, Is.EqualTo(1300));
+            Assert.That(meretAfterStop, Is.EqualTo(Constant.MaxMeret - 2));
+            Assert.That(stopSent, Does.Contain(Hex(MailPacket.Error(MailError.s_mail_error, 19))));
+            Assert.That(cappedAfterStop.MesoCollectTime, Is.GreaterThan(0));
+            Assert.That(cappedAfterStop.MeretCollectTime, Is.EqualTo(0));
+            Assert.That(lastAfterStop, Is.EqualTo(0));
+
+            Assert.That(session.Currency.Meso, Is.EqualTo(1700));
+            Assert.That(session.Currency.Meret, Is.EqualTo(7));
+            Assert.That(Stored(capped.Id)!.MeretCollectTime, Is.GreaterThan(0));
+            Assert.That(Stored(last.Id)!.MesoCollectTime, Is.GreaterThan(0));
+            Assert.That(MailSent().Select(Convert.ToHexString), Does.Not.Contain(Hex(MailPacket.Error(MailError.s_mail_error, 19))));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
     // The same mail in a second inbox of the same session, loaded before the first collect: the collect reads the mail
     // again from storage, so the second inbox gives nothing and answers already collected. This is one process under
     // one item lock. Two game servers collecting at once are kept apart by login, and for the mail's own mesos and

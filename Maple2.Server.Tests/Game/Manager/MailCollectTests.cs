@@ -217,25 +217,98 @@ public class MailCollectTests {
 
     // Merets over their cap stay on the mail, and mode 11, which would mark them collected, is not sent: the mesos
     // are given and reported with mode 10, and the collect is refused with the mail error box as for a full wallet.
-    // Mode 11 was sent, and the client showed merets as collected that were still on the mail.
+    // Mode 11 was sent, and the client showed merets as collected that were still on the mail. Once the merets fit,
+    // the next collect gives them alone and closes the mail with mode 11; a third is answered already collected.
     [Test]
     public void Collect_MeretsOverTheCap_StayAndAreNotShownCollected() {
         GameSession session = Start();
         session.Currency.Meret = Constant.MaxMeret - 2;
-        long mesoBefore = session.Currency.Meso;
         long mailId = CurrencyMail(session, 100, 7);
+
+        CollectOverTheCap(session, mailId, () => session.Currency.Meret, value => session.Currency.Meret = value,
+            mail => mail.MeretCollectTime);
+    }
+
+    // Game merets over their cap: the same as the merets (mode 11 alone marks them collected).
+    [Test]
+    public void Collect_GameMeretsOverTheCap_StayAndAreNotShownCollected() {
+        GameSession session = Start();
+        session.Currency.GameMeret = Constant.MaxMeret - 2;
+        long mailId = Mail(session, new Mail { ReceiverId = test.CharacterId, Type = MailType.System, Title = "t", Content = "c", Meso = 100, GameMeret = 7 });
+
+        CollectOverTheCap(session, mailId, () => session.Currency.GameMeret, value => session.Currency.GameMeret = value,
+            mail => mail.GameMeretCollectTime);
+    }
+
+    // A meso item whose mesos would take the wallet over MaxMeso stays on the mail: the collect is refused before
+    // anything is given (CollectCheck), as for the mail's own mesos. The item was added and the wallet cap
+    // (CurrencyManager.ChangeMeso) dropped the part over it.
+    [Test]
+    public void Collect_MesoItemOverTheCap_StaysOnTheMail() {
+        GameSession session = Start();
+        StoredItem meso = session.Field!.ItemDrop.CreateItem(MesoItem)!;
+        meso.Amount = 1000;
+        session.Currency.Meso = Constant.MaxMeso - 40;
+        long mailId = Mail(session, meso);
         test.TakeSent();
 
         MailError refused = session.Mail.Collect(mailId);
+        long walletAfterRefused = session.Currency.Meso;
+        byte[] refusedModes = MailModes();
+        int itemsLeft = Stored(mailId).Items.Count;
 
-        Mail left = Stored(mailId);
+        session.Currency.Meso = 0;
+        MailError collected = session.Mail.Collect(mailId);
+
         Assert.Multiple(() => {
             Assert.That(refused, Is.EqualTo(MailError.s_mail_error));
-            Assert.That(MailModes(), Is.EqualTo(new byte[] { 2, 10 }), "read (the collect reads an unread mail), then the mesos");
-            Assert.That(session.Currency.Meso - mesoBefore, Is.EqualTo(100));
-            Assert.That(session.Currency.Meret, Is.EqualTo(Constant.MaxMeret - 2));
+            Assert.That(walletAfterRefused, Is.EqualTo(Constant.MaxMeso - 40));
+            Assert.That(refusedModes, Does.Not.Contain((byte) 10).And.Not.Contain((byte) 11));
+            Assert.That(itemsLeft, Is.EqualTo(1));
+            Assert.That(collected, Is.EqualTo(MailError.none));
+            Assert.That(session.Currency.Meso, Is.EqualTo(1000));
+            Assert.That(Stored(mailId).Items, Is.Empty);
+        });
+    }
+
+    // The mail holds 100 mesos and 7 of a currency whose balance is 2 under its cap: the first collect gives the mesos
+    // only, the second (balance set to 0) the 7 alone with mode 11, the third nothing.
+    private void CollectOverTheCap(GameSession session, long mailId, Func<long> balance, Action<long> setBalance, Func<Mail, long> collectTime) {
+        long mesoBefore = session.Currency.Meso;
+        test.TakeSent();
+
+        MailError refused = session.Mail.Collect(mailId);
+        byte[] refusedModes = MailModes();
+        long mesoAfterRefused = session.Currency.Meso;
+        long balanceAfterRefused = balance();
+        Mail left = Stored(mailId);
+
+        setBalance(0);
+        MailError collected = session.Mail.Collect(mailId);
+        byte[] collectedModes = MailModes();
+        long mesoAfterCollected = session.Currency.Meso;
+        long balanceAfterCollected = balance();
+        long timeAfterCollected = collectTime(Stored(mailId));
+
+        MailError again = session.Mail.Collect(mailId);
+
+        Assert.Multiple(() => {
+            Assert.That(refused, Is.EqualTo(MailError.s_mail_error));
+            Assert.That(refusedModes, Is.EqualTo(new byte[] { 2, 10 }), "read (the collect reads an unread mail), then the mesos");
+            Assert.That(mesoAfterRefused - mesoBefore, Is.EqualTo(100));
+            Assert.That(balanceAfterRefused, Is.EqualTo(Constant.MaxMeret - 2));
             Assert.That(left.MesoCollectTime, Is.GreaterThan(0));
-            Assert.That(left.MeretCollectTime, Is.EqualTo(0));
+            Assert.That(collectTime(left), Is.EqualTo(0));
+
+            Assert.That(collected, Is.EqualTo(MailError.none));
+            Assert.That(collectedModes, Is.EqualTo(new byte[] { 11 }));
+            Assert.That(mesoAfterCollected, Is.EqualTo(mesoAfterRefused), "the mesos are not given twice");
+            Assert.That(balanceAfterCollected, Is.EqualTo(7));
+            Assert.That(timeAfterCollected, Is.GreaterThan(0));
+
+            Assert.That(again, Is.EqualTo(MailError.s_mail_error_already_receive));
+            Assert.That(session.Currency.Meso, Is.EqualTo(mesoAfterCollected));
+            Assert.That(balance(), Is.EqualTo(7));
         });
     }
 
