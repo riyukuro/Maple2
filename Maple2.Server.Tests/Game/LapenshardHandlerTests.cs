@@ -1,13 +1,16 @@
 using System.Collections.Generic;
+using System.Linq;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers;
+using Maple2.Server.Game.Packets;
 
 namespace Maple2.Server.Tests.Game;
 
 // The Lapenshard packet (RecvOp.Lapenshard): the fusion dialog's requests. A request the client's own checks would
-// not let through sends nothing back and takes nothing.
+// not let through takes nothing; a refused upgrade (mode 5) is answered as a failed one, so the dialog leaves its
+// waiting state, and the other modes send nothing back.
 public class LapenshardHandlerTests {
     private const int Shard = 20000001;
     private TestGameSession test = null!;
@@ -31,6 +34,9 @@ public class LapenshardHandlerTests {
             body(writer);
         }));
     }
+
+    // The answer to a refused upgrade of the worn lapenshard (uid 0) in slot 0.
+    private static string Failed(int id) => System.Convert.ToHexString(LapenshardPacket.Upgrade(0, id, (LapenshardSlot) 0, success: false).ToArray());
 
     [Test]
     public void AddLapenshard_NotHeldSendsNoPreview() {
@@ -64,7 +70,7 @@ public class LapenshardHandlerTests {
             writer.WriteInt(0);
         });
 
-        Assert.That(test.TakeSent(), Is.Empty);
+        Assert.That(test.TakeSent().Select(System.Convert.ToHexString), Is.EqualTo(new[] { Failed(1234) }));
         Assert.That(test.Session.Currency.Meso, Is.EqualTo(10_000));
     }
 
@@ -79,7 +85,7 @@ public class LapenshardHandlerTests {
             writer.WriteInt(1);
         });
 
-        Assert.That(test.TakeSent(), Is.Empty);
+        Assert.That(test.TakeSent().Select(System.Convert.ToHexString), Is.EqualTo(new[] { Failed(Shard) }));
         Assert.That(test.Session.Currency.Meso, Is.EqualTo(10_000));
     }
 
@@ -94,7 +100,7 @@ public class LapenshardHandlerTests {
             writer.WriteInt(2);
         });
 
-        Assert.That(test.TakeSent(), Is.Empty);
+        Assert.That(test.TakeSent().Select(System.Convert.ToHexString), Is.EqualTo(new[] { Failed(Shard) }));
         Assert.That(test.Session.Currency.Meso, Is.EqualTo(10_000));
     }
 }

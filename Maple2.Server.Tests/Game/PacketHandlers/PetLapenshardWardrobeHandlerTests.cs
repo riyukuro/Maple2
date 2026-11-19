@@ -336,7 +336,7 @@ public class PetLapenshardWardrobeHandlerTests {
         Assert.That(test.TrophyCounter(21100059), Is.EqualTo(counted));
     }
 
-    // Too few ingredients: nothing is taken.
+    // Too few ingredients: nothing is taken, and the answer is a failed upgrade.
     [Test]
     public void LapenshardUpgrade_WithoutIngredientsTakesNothing() {
         var test = new TestGameSession();
@@ -360,12 +360,13 @@ public class PetLapenshardWardrobeHandlerTests {
             writer.WriteInt(4);
         }));
 
-        Assert.That(test.TakeSent(), Is.Empty);
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(LapenshardPacket.Upgrade(shards.Uid, ShardId, (LapenshardSlot) 0, success: false)) }));
         Assert.That(session.Currency.Meso, Is.EqualTo(5000));
         Assert.That(session.Item.Inventory.Get(shards.Uid)?.Amount, Is.EqualTo(9));
     }
 
-    // A locked fodder stack (or one still unlocking) is not taken: the fusion is refused and nothing is paid.
+    // A locked fodder stack (or one still unlocking) is not taken: the fusion is refused (answered as failed) and
+    // nothing is paid.
     [TestCase(false)]
     [TestCase(true)]
     public void LapenshardUpgrade_ALockedFodderTakesNothing(bool unlocking) {
@@ -400,7 +401,7 @@ public class PetLapenshardWardrobeHandlerTests {
             writer.WriteInt(4);
         }));
 
-        Assert.That(test.TakeSent(), Is.Empty);
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(LapenshardPacket.Upgrade(shard.Uid, ShardId, (LapenshardSlot) 0, success: false)) }));
         Assert.That(session.Currency.Meso, Is.EqualTo(5000));
         Assert.That(session.Item.Inventory.Get(fodder.Uid)?.Amount, Is.EqualTo(4));
         Assert.That(session.Item.Inventory.Get(shard.Uid)?.Id, Is.EqualTo(ShardId));
@@ -529,7 +530,8 @@ public class PetLapenshardWardrobeHandlerTests {
         Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(WardrobePacket.Load(0, wardrobe)) }));
     }
 
-    // Two upgrade requests with what one upgrade needs: the second finds the lapenshard gone and takes nothing.
+    // Two upgrade requests with what one upgrade needs: the second finds the lapenshard gone, takes nothing and is
+    // answered as failed.
     [Test]
     public void LapenshardUpgrade_TwiceWithOneSetPaysOnce() {
         var test = new TestGameSession();
@@ -560,7 +562,7 @@ public class PetLapenshardWardrobeHandlerTests {
 
         Upgrade();
 
-        Assert.That(test.TakeSent(), Is.Empty);
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(LapenshardPacket.Upgrade(shards.Uid, ShardId, (LapenshardSlot) 0, success: false)) }));
         Assert.That(session.Currency.Meso, Is.EqualTo(4000));
         Assert.That(session.Item.Inventory.Get(crystals.Uid)!.Amount, Is.EqualTo(30));
         Assert.That(session.Item.Inventory.Find(NextShardId).Sum(item => item.Amount), Is.EqualTo(1));

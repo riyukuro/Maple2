@@ -112,35 +112,52 @@ public class LapenshardHandler : FieldPacketHandler {
             fodders[fodderUid] = fodderAmount;
         }
 
-        if (!TableMetadata.LapenshardUpgradeTable.Entries.TryGetValue(lapenshardId, out LapenshardUpgradeTable.Entry? entry)) {
-            return;
-        }
-        if (fodders.Values.Sum(amount => (long) amount) != entry.RequireCount) {
+        if (!TryUpgrade(session, lapenshardUid, lapenshardId, slot, fodders, out Item? toMail)) {
+            // A refused upgrade answers as a failed one. The client sends mode 5 and waits in state 2 with the upgrade
+            // animation running; only a Lapenshard 5 of the source's item id leaves that state, and with success false
+            // it shows the result page as failed (uilapenshardsystemdialog.cpp:1788 vfunc_9 case 5 -> vfunc_2(7) ->
+            // ShowUpgradeResult(false), :2192 SendLapenshardMode5). Nothing was taken.
+            session.Send(LapenshardPacket.Upgrade(lapenshardUid, lapenshardId, slot, success: false));
             return;
         }
 
-        Item? toMail = null;
+        // A full bag: the upgraded lapenshard goes by mail, stored with the bag (the price taken) in one save, after the
+        // bag lock (see MailWithBag). Should that save fail, it is mailed alone, as before.
+        if (toMail != null && !session.Item.MailWithBag(toMail) && !session.Item.MailHeldItem(toMail)) {
+            Logger.Fatal("Failed to mail upgraded lapenshard {ItemUid}", toMail.Uid);
+        }
+    }
+
+    private bool TryUpgrade(GameSession session, long lapenshardUid, int lapenshardId, LapenshardSlot slot, Dictionary<long, int> fodders, out Item? toMail) {
+        toMail = null;
+        if (!TableMetadata.LapenshardUpgradeTable.Entries.TryGetValue(lapenshardId, out LapenshardUpgradeTable.Entry? entry)) {
+            return false;
+        }
+        if (fodders.Values.Sum(amount => (long) amount) != entry.RequireCount) {
+            return false;
+        }
+
         lock (session.Item) {
             if (GetLapenshardId(session, lapenshardUid, slot) != lapenshardId) {
-                return;
+                return false;
             }
             foreach ((long uid, int amount) in fodders) {
                 Item? fodder = session.Item.Inventory.Get(uid, InventoryType.Lapenshard);
                 if (fodder == null || !LapenshardRules.IsMaterialAmount(amount, fodder.Amount, uid == lapenshardUid)) {
-                    return; // Invalid amount for fodder
+                    return false; // Invalid amount for fodder
                 }
                 if (!fodder.IsSpendable()) {
-                    return; // A locked or expired fodder is not taken
+                    return false; // A locked or expired fodder is not taken
                 }
                 if (!TableMetadata.LapenshardUpgradeTable.Entries.TryGetValue(fodder.Id, out LapenshardUpgradeTable.Entry? fodderEntry)) {
-                    return; // Fodder is not a valid lapenshard
+                    return false; // Fodder is not a valid lapenshard
                 }
                 if (fodderEntry.GroupId != entry.GroupId) {
-                    return; // Fodder group does not match lapenshard being upgraded
+                    return false; // Fodder group does not match lapenshard being upgraded
                 }
             }
             if (session.Currency.CanAddMeso(-entry.Meso) != -entry.Meso) {
-                return;
+                return false;
             }
 
             bool upgraded;
@@ -159,18 +176,14 @@ public class LapenshardHandler : FieldPacketHandler {
             }
 
             // A fusion always succeeds: the upgrade table has no rate, so lapenshard_upgrade_fail (21100058) is never due.
+            // A refusal is not a try, so it counts nothing.
             if (upgraded) {
                 session.ConditionUpdate(ConditionType.lapenshard_upgrade_try);
                 session.ConditionUpdate(ConditionType.lapenshard_upgrade_success);
                 session.ConditionUpdate(ConditionType.lapenshard_upgrade_result,
                     targetLong: LapenshardRules.ResultTier(TableMetadata.LapenshardUpgradeTable, entry));
             }
-        }
-
-        // A full bag: the upgraded lapenshard goes by mail, stored with the bag (the price taken) in one save, after the
-        // bag lock (see MailWithBag). Should that save fail, it is mailed alone, as before.
-        if (toMail != null && !session.Item.MailWithBag(toMail) && !session.Item.MailHeldItem(toMail)) {
-            Logger.Fatal("Failed to mail upgraded lapenshard {ItemUid}", toMail.Uid);
+            return upgraded;
         }
     }
 
