@@ -58,6 +58,14 @@ public class PrestigeHandler : FieldPacketHandler {
             return;
         }
 
+        // Only an item reward is claimed. Both dialogs send no claim for a stat point reward (type 2), which the
+        // server grants by level (ConfigManager), or for a level without a row (uiadventureleveldialog.cpp:525
+        // ClaimLevelReward, uiadventurelevelolddialog.cpp:456 SendPrestige), and they show a reward slot only for
+        // an item (type 1, uiadventureleveldialog.cpp:452). The KMS2 table has no other type.
+        if (metadata.Type != PrestigeAwardType.item) {
+            return;
+        }
+
         Item? item = session.Field?.ItemDrop.CreateItem(metadata.Id, metadata.Rarity, metadata.Value);
         if (item == null) {
             return;

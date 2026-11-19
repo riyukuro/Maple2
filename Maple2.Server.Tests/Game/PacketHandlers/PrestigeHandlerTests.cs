@@ -25,6 +25,8 @@ public class PrestigeHandlerTests {
         test.Register(TestGameSession.Metadata(RewardId, slotMax: slotMax));
         test.SetTable(new PrestigeLevelRewardTable(new Dictionary<int, PrestigeLevelRewardMetadata> {
             [3] = new(3, PrestigeAwardType.item, RewardId, 1, 2),
+            // A stat point row with an item id, so only the type check keeps a forged claim from paying.
+            [2] = new(2, PrestigeAwardType.statPoint, RewardId, 1, 2),
         }));
         test.SetTable(new PrestigeMissionTable(new Dictionary<int, PrestigeMissionMetadata> {
             [MissionId] = new(MissionId, 5, new ItemComponent(RewardId, 1, 4, ItemTag.None)),
@@ -73,7 +75,7 @@ public class PrestigeHandlerTests {
 
     // A level above the account's, and a level without a reward row: no answer, nothing given.
     [TestCase(4)]
-    [TestCase(2)]
+    [TestCase(1)]
     public void LevelReward_OfALevelNotReachedOrWithoutARowGivesNothing(int level) {
         GameSession session = Login();
 
@@ -82,6 +84,19 @@ public class PrestigeHandlerTests {
         Assert.That(test.TakeSent(), Is.Empty);
         Assert.That(Held(session), Is.EqualTo(0));
         Assert.That(session.Exp.PrestigeRewardsClaimed, Is.Empty);
+    }
+
+    // A claim of a stat point reward (type 2), which neither dialog sends: no answer, nothing given, nothing claimed.
+    [Test]
+    public void LevelReward_AForgedStatPointClaimGivesNothing() {
+        GameSession session = Login();
+
+        Claim(session, 3, 2);
+
+        Assert.That(test.TakeSent(), Is.Empty);
+        Assert.That(Held(session), Is.EqualTo(0));
+        Assert.That(session.Exp.PrestigeRewardsClaimed, Is.Empty);
+        Assert.That(test.Errors, Is.Empty);
     }
 
     // A full bag: the notice, and the level can still be claimed.
