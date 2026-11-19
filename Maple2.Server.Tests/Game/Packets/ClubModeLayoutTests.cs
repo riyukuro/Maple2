@@ -178,7 +178,7 @@ public class ClubModeLayoutTests {
         Assert.That(leader.ReadLong(), Is.EqualTo(77));
         Assert.That(leader.ReadUnicodeString(), Is.EqualTo("Old"));
         Assert.That(leader.ReadUnicodeString(), Is.EqualTo("New"));
-        Assert.That(leader.ReadByte(), Is.EqualTo(1));
+        Assert.That(leader.ReadByte(), Is.EqualTo(0));
         Assert.That(leader.Available, Is.Zero);
     }
 

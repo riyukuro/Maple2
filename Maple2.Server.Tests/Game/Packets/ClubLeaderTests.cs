@@ -27,7 +27,7 @@ public class ClubLeaderTests {
     public void UpdateLeaderBytes() {
         ByteWriter writer = ClubPacket.UpdateLeader(0x0102030405060708, "a", "b");
         byte[] body = writer.Buffer.AsSpan(2, writer.Length - 2).ToArray();
-        // sub-type 21, club id, old leader, new leader, show the notice
-        Assert.That(body, Is.EqualTo(new byte[] { 21, 8, 7, 6, 5, 4, 3, 2, 1, 1, 0, (byte) 'a', 0, 1, 0, (byte) 'b', 0, 1 }));
+        // sub-type 21, club id, old leader, new leader, 0: the old leader's own notice is shown
+        Assert.That(body, Is.EqualTo(new byte[] { 21, 8, 7, 6, 5, 4, 3, 2, 1, 1, 0, (byte) 'a', 0, 1, 0, (byte) 'b', 0, 0 }));
     }
 }

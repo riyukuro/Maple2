@@ -220,7 +220,11 @@ public static class ClubPacket {
         pWriter.WriteLong(clubId);
         pWriter.WriteUnicodeString(oldLeader);
         pWriter.WriteUnicodeString(newLeader);
-        pWriter.WriteBool(true); // s_club_notify_change_master
+        // Read only by the old leader's client: 0 shows s_club_notify_change_master_me (string 854), anything else
+        // nothing; every other member gets s_club_notify_change_master (853) either way (CClubCli::FUN_140b135d0,
+        // clubcli.cpp:313-333). Only a hand-over (Club 12) reaches the old leader: one who leaves is no longer a
+        // member when the new leader is sent.
+        pWriter.WriteBool(false);
 
         return pWriter;
     }
