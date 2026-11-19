@@ -87,7 +87,8 @@ public class SkillMacroHandlerTests {
         Assert.That(Load(), Is.EqualTo(Expected(new SkillMacro("a", 5, new HashSet<int> { 11 }))));
     }
 
-    // A close right after the load answer (the client's list may still be empty) keeps the stored tabs.
+    // A close after the load answer keeps the stored tabs: the client sends an empty list only when the answer had not
+    // reached it yet, however late that is.
     [Test]
     public void Update_EmptyTabListRightAfterTheLoadStoresNothing() {
         Update(("a", 5, [11]));
@@ -95,17 +96,6 @@ public class SkillMacroHandlerTests {
         Update();
 
         Assert.That(Load(), Is.EqualTo(Expected(new SkillMacro("a", 5, new HashSet<int> { 11 }))));
-    }
-
-    // The player removed the last tab some time after the tabs arrived: the empty list is stored.
-    [Test]
-    public void Update_EmptyTabListAfterTheGraceIsStored() {
-        Update(("a", 5, [11]));
-        Load();
-        test.Session.SkillMacroLoadTick -= SkillMacroRules.EmptySaveGraceMs;
-        Update();
-
-        Assert.That(Load(), Is.EqualTo(Expected()));
     }
 
     [Test]

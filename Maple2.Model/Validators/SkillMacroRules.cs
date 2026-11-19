@@ -10,17 +10,14 @@ public static class SkillMacroRules {
     // is s_skill_compact_control_default_tabname, which no box limits: 16 is the longest in the client's languages.
     public const int MaxDefaultNameLength = 16;
 
-    // The client removes a tab without asking how many are left (RemoveTab, uiskillcompactcontroldialog.cpp:910) and
-    // saves its list on every close (vfunc_67, :154), also before the load answer came, when the list is still empty.
-    // An empty list is taken only once EmptySaveGraceMs have passed since the server answered the load: a player who
-    // removed the last tab clicked after the tabs arrived, while an early close comes within a round trip. A list
-    // the server stored as empty gets the client's default tab on the next load (vfunc_79, :523).
-    public const long EmptySaveGraceMs = 2000;
-
-    public static bool IsTabCount(int count, long loadAnsweredTick, long nowTick) {
-        if (count == 0) {
-            return loadAnsweredTick != 0 && nowTick - loadAnsweredTick >= EmptySaveGraceMs;
-        }
+    // The client never sends an empty list once its tabs are loaded: the load answer always leaves a tab (an empty
+    // list gets the default one, vfunc_79, uiskillcompactcontroldialog.cpp:523), and the first tab cannot be removed.
+    // The dialog's Flash adds it with close 0 (the tab bar is built from the list with close 0 for the first tab and
+    // 1 for the others, FUN_140fa1ff0, :807), its menu offers "remove" only for close 1 (RClickDropdown.isRemove), and
+    // removeTab returns for any other tab before it calls onRemoveTab (RemoveTab, :910). The client sends its list on
+    // every close (vfunc_67, :154), also before the load answer came, when the list is still empty: that is the only
+    // empty list it sends, and storing it erases the player's tabs, so it is refused.
+    public static bool IsTabCount(int count) {
         return count is >= 1 and <= MaxTabs;
     }
 
