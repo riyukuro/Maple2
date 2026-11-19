@@ -476,14 +476,17 @@ public class CombatLayoutTests {
         Assert.That(state.Available, Is.Zero);
 
         var macro = new SkillMacro("Combo", 77, [10200001, 10200002]);
-        ByteReader macros = Reader(SkillMacroPacket.Load([macro]), SendOp.SkillMacro);
-        Assert.That(macros.ReadByte(), Is.EqualTo(2));
-        Assert.That(macros.ReadInt(), Is.EqualTo(1));
-        Assert.That(macros.ReadUnicodeString(), Is.EqualTo("Combo"));
-        Assert.That(macros.ReadLong(), Is.EqualTo(77));
-        Assert.That(macros.ReadInt(), Is.EqualTo(2));
-        Assert.That(macros.ReadInt(), Is.EqualTo(10200001));
-        Assert.That(macros.ReadInt(), Is.EqualTo(10200002));
-        Assert.That(macros.Available, Is.Zero);
+        // The dialog's load answer is mode 0, the login's mode 2; the same body.
+        foreach ((ByteWriter packet, byte mode) in new[] { (SkillMacroPacket.Load([macro]), (byte) 0), (SkillMacroPacket.Init([macro]), (byte) 2) }) {
+            ByteReader macros = Reader(packet, SendOp.SkillMacro);
+            Assert.That(macros.ReadByte(), Is.EqualTo(mode));
+            Assert.That(macros.ReadInt(), Is.EqualTo(1));
+            Assert.That(macros.ReadUnicodeString(), Is.EqualTo("Combo"));
+            Assert.That(macros.ReadLong(), Is.EqualTo(77));
+            Assert.That(macros.ReadInt(), Is.EqualTo(2));
+            Assert.That(macros.ReadInt(), Is.EqualTo(10200001));
+            Assert.That(macros.ReadInt(), Is.EqualTo(10200002));
+            Assert.That(macros.Available, Is.Zero);
+        }
     }
 }

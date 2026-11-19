@@ -66,6 +66,16 @@ public class SkillMacroHandlerTests {
         Assert.That(Load(), Is.EqualTo(Expected()));
     }
 
+    // The dialog reads the answer only as mode 0 (UISkillCompactControlDialog::vfunc_79); mode 2 is the login's.
+    [Test]
+    public void Load_AnswersInMode0() {
+        var reader = new ByteReader(Load(), 0);
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.SkillMacro));
+        Assert.That(reader.ReadByte(), Is.EqualTo(0));
+        Assert.That(reader.ReadInt(), Is.Zero);
+        Assert.That(reader.Available, Is.Zero);
+    }
+
     [Test]
     public void Update_EmptyTabListStoresNothing() {
         Update(("a", 5, [11]));
