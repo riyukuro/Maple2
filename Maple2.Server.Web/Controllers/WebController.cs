@@ -120,19 +120,27 @@ public class WebController : ControllerBase {
         if (memoryStream.Length == 0) {
             return Results.BadRequest("Request was empty");
         }
-        IByteReader packet = new ByteReader(memoryStream.ToArray());
-        int header = packet.ReadInt(); // 0?
-        long accountId = packet.ReadLong();
-        long characterId = packet.ReadLong();
-        int unknown = packet.ReadInt(); // 5 if mentee ?
-
-
-        if (unknown != 5) {
-            Log.Logger.Debug("Unimplemented info type: {Type}", unknown);
-            return Results.BadRequest($"Invalid info type: {unknown}");
+        MenteeSearchRequest? request = ReadMenteeSearch(memoryStream.ToArray());
+        if (request == null) {
+            return Results.BadRequest("Request too short");
         }
 
-        return Results.File(ZlibCompress(MenteeList(accountId, characterId)), "application/octet-stream");
+        return Results.File(ZlibCompress(MenteeList(request.AccountId, request.CharacterId)), "application/octet-stream");
+    }
+
+    // The client's only ruq.aspx request is the mentee search of the mentor page (CSoapClient::RequestMenteeSearch,
+    // soapclient.cpp:244): i32 user type, i64 account, i64 character, i32 the mentoring event's id
+    // (UIInviteMentoringDialog::OnLoadComplete, uiinvitementoringdialog.cpp:139), i32 2 (CMenteeSearchParam).
+    public record MenteeSearchRequest(int UserType, long AccountId, long CharacterId, int MentoringId, int Option);
+
+    public const int MenteeSearchSize = 4 + 8 + 8 + 4 + 4;
+
+    public static MenteeSearchRequest? ReadMenteeSearch(byte[] body) {
+        if (body.Length < MenteeSearchSize) {
+            return null;
+        }
+        var packet = new ByteReader(body);
+        return new MenteeSearchRequest(packet.ReadInt(), packet.ReadLong(), packet.ReadLong(), packet.ReadInt(), packet.ReadInt());
     }
 
     // The client's upload (CSoapClient::UploadUgcFile, soapclient.cpp:302): i32 user type, i32 kind, i64 account,
