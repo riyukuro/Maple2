@@ -306,8 +306,24 @@ public class NpcControlLayoutTests : NpcLayoutTestBase {
 
         Assert.That(npc.Animation.SequenceSpeed, Is.EqualTo(1.5f));
         Assert.That(Read(NpcControlPacket.Control(npc), false)[0].Speed, Is.EqualTo((short) 100));
-        Assert.That(NpcControlRules.WireAnimSpeed(1.1f, AnimationType.Misc), Is.EqualTo((short) 110));
-        Assert.That(NpcControlRules.WireAnimSpeed(1f, null), Is.EqualTo((short) 100));
+    }
+
+    // An npc whose model anispeed is 1.5 plays its idle at 1.5 on the server and sends 1, as retail captures do; only a
+    // hit entry and its hold carry the hit's speed (0.7 or 0.8 in retail captures).
+    [Test]
+    public void ModelAniSpeed_SentAtOneOutsideAHit() {
+        FieldNpc npc = Spawn(boss: false, sequences: Mover, edit: metadata => metadata with { Model = metadata.Model with { AniSpeed = 1.5f } });
+        Assert.That(npc.Animation.TryPlaySequence("Idle_A", 1.5f, AnimationType.Misc), Is.True);
+        SetState(npc, ActorState.Idle);
+        Assert.That(Read(NpcControlPacket.Control(npc), false)[0].Speed, Is.EqualTo((short) 100));
+
+        Assert.That(npc.Animation.TryPlaySequence("Idle_A", 0.8f, AnimationType.Misc), Is.True);
+        SetState(npc, ActorState.Hit, new NpcControlRules.HitEntry(1, 0.25f, 0.5f, 0f, false));
+        Assert.That(Read(NpcControlPacket.Control(npc), false)[0].Speed, Is.EqualTo((short) 80));
+        SetState(npc, ActorState.Hit);
+        Entry hold = Read(NpcControlPacket.Control(npc), false)[0];
+        Assert.That((hold.State, hold.Sequence, hold.Speed), Is.EqualTo(((byte) 0, (short) -1, (short) 80)));
+        Assert.That(NpcControlRules.WireAnimSpeed(1.5f, hit: false), Is.EqualTo((short) 100));
     }
 }
 
