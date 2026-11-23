@@ -38,15 +38,21 @@ public partial class MovementState {
     private void StartWalking(string sequence, NpcTask task, float baseOverride = 0) {
         sequence = sequence == "" ? "Run_A" : sequence;
         walkSegmentSet = false;
-        walkSpeed = Speed;
 
         emoteActionTask?.Cancel();
 
         bool isWalking = sequence.StartsWith("Walk_");
 
         baseSpeed = baseOverride > 0 ? baseOverride : isWalking ? actor.Value.Metadata.Action.WalkSpeed : actor.Value.Metadata.Action.RunSpeed;
+        // The caller's UpdateMoveSpeed ran with the last walk's base speed: the speed is taken again with this one.
+        UpdateMoveSpeed(speedOverride);
+        walkSpeed = Speed;
 
-        if (actor.Animation.PlayingSequence?.Name == sequence || actor.Animation.TryPlaySequence(sequence, aniSpeed * Speed, AnimationType.Misc)) {
+        // The walk and run sequences play at the model's own rate, not scaled by the move speed: retail captures send 1
+        // in 228,300 of 229,224 Walk_ entries (0 in the rest) and in all 94,877 Run_A entries. The client plays an entry's
+        // speed from the start of a sequence (CNpc::ApplySyncBlock, CAnimationManager::PlayAnimation), so a move speed of
+        // 120 played the walk 120 times over.
+        if (actor.Animation.PlayingSequence?.Name == sequence || actor.Animation.TryPlaySequence(sequence, aniSpeed, AnimationType.Misc)) {
             stateSequence = actor.Animation.PlayingSequence;
             walkSequence = stateSequence;
             walkTask = task;
@@ -194,7 +200,7 @@ public partial class MovementState {
         switch (keyName) {
             case "end":
                 if (State == ActorState.Walk) {
-                    if (actor.Animation.TryPlaySequence(stateSequence!.Name, aniSpeed * Speed, AnimationType.Misc)) {
+                    if (actor.Animation.TryPlaySequence(stateSequence!.Name, aniSpeed, AnimationType.Misc)) {
                         stateSequence = actor.Animation.PlayingSequence;
                     }
 

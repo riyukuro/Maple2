@@ -1,4 +1,5 @@
-﻿using System.Collections.Concurrent;
+﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -10,6 +11,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.ActorStateComponent;
+using Maple2.Server.Game.Model.Enum;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Util;
 using Maple2.Server.Tests.Game.Manager;
@@ -250,6 +252,63 @@ public class NpcControlLayoutTests : NpcLayoutTestBase {
             Assert.That(entry.Tail, Is.EqualTo(expected.ToArray()));
         });
     }
+
+    // The entry's speed against retail captures: 1 in 228,300 of 229,224 Walk_ entries (0 in the rest) and in all 94,877
+    // Run_A entries, whatever the npc's move speed, and 1 in every attack entry. An npc that walks a patrol at 120 u/s
+    // (Tria's Lyn 11000320: walkSpeed 120) sends 100, not 12000; a run at 300 u/s the same.
+    private static readonly string[] Mover = ["Idle_A", "Walk_A", "Run_A", "Attack_01_A"];
+
+    private FieldNpc SpawnMover() {
+        // On the flat navmesh (x and y -2000 to 2000, height 0), so a move finds a path.
+        FieldNpc npc = Spawn(boss: false, position: Vector3.Zero, sequences: Mover, edit: metadata => metadata with {
+            Action = metadata.Action with { WalkSpeed = 120, RunSpeed = 300 },
+            Stat = metadata.Stat with { Stats = new Dictionary<BasicAttribute, long>(metadata.Stat.Stats) { [BasicAttribute.MovementSpeed] = 100 } },
+        });
+        // The spawn state ends at the first movement update (no Regen_A in the rig): the npc then stands idle.
+        npc.MovementState.Update(Field.FieldTick);
+        return npc;
+    }
+
+    [TestCase("Walk_A", 120f)]
+    [TestCase("Run_A", 300f)]
+    public void Move_SequencePlaysAtOneWhateverTheMoveSpeed(string sequence, float speed) {
+        FieldNpc npc = SpawnMover();
+        npc.MovementState.TryMoveTo(new Vector3(1500, 0, 0), false, sequence);
+        npc.TaskState.Update(Field.FieldTick);
+
+        Assert.That(npc.MovementState.State, Is.EqualTo(ActorState.Walk));
+        Assert.That(npc.Animation.PlayingSequence?.Name, Is.EqualTo(sequence));
+        // The move itself keeps the npc's speed, taken with this walk's base speed.
+        Assert.That(npc.MovementState.Speed, Is.EqualTo(speed));
+        Entry entry = Read(NpcControlPacket.Control(npc), false)[0];
+        Assert.That(entry.Speed, Is.EqualTo((short) 100));
+    }
+
+    // The walk replays its sequence at each "end" key at the same speed.
+    [Test]
+    public void Walk_ReplayAtEndKeepsOne() {
+        FieldNpc npc = SpawnMover();
+        npc.MovementState.TryMoveTo(new Vector3(1500, 0, 0), false, "Walk_A");
+        npc.TaskState.Update(Field.FieldTick);
+        Assert.That(npc.Animation.PlayingSequence?.Name, Is.EqualTo("Walk_A"));
+        npc.MovementState.StateWalkEvent("end");
+
+        Assert.That(npc.MovementState.State, Is.EqualTo(ActorState.Walk));
+        Assert.That(npc.Animation.SequenceSpeed, Is.EqualTo(1f));
+        Assert.That(Read(NpcControlPacket.Control(npc), false)[0].Speed, Is.EqualTo((short) 100));
+    }
+
+    // A cast's motion speed stays on the server's clock; the entry carries 1.
+    [Test]
+    public void Cast_SentAtOneKeepsItsMotionSpeed() {
+        FieldNpc npc = SpawnMover();
+        Assert.That(npc.Animation.TryPlaySequence("Attack_01_A", 1.5f, AnimationType.Skill), Is.True);
+
+        Assert.That(npc.Animation.SequenceSpeed, Is.EqualTo(1.5f));
+        Assert.That(Read(NpcControlPacket.Control(npc), false)[0].Speed, Is.EqualTo((short) 100));
+        Assert.That(NpcControlRules.WireAnimSpeed(1.1f, AnimationType.Misc), Is.EqualTo((short) 110));
+        Assert.That(NpcControlRules.WireAnimSpeed(1f, null), Is.EqualTo((short) 100));
+    }
 }
 
 // A real field npc (spawned through FieldManager.SpawnNpc, its AI off) for the npc packet layout tests.
@@ -257,7 +316,8 @@ public abstract class NpcLayoutTestBase : TriggerTestBase {
     private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
     protected const int NpcId = 21000001;
 
-    protected FieldNpc Spawn(bool boss, Navigation? navigation = null, Vector3? position = null) {
+    protected FieldNpc Spawn(bool boss, Navigation? navigation = null, Vector3? position = null, string[]? sequences = null,
+        Func<NpcMetadata, NpcMetadata>? edit = null) {
         Start();
         typeof(FieldManager).GetField("<Navigation>k__BackingField", Any)!.SetValue(Field, navigation ?? TriggerHallGameTests.FlatNavigation());
         typeof(FieldManager).GetField("<Mobs>k__BackingField", Any)!.SetValue(Field, new ConcurrentDictionary<int, FieldNpc>());
@@ -269,7 +329,8 @@ public abstract class NpcLayoutTestBase : TriggerTestBase {
         NpcMetadata metadata = AiStateTests.Npc(NpcId);
         // CNpcData::IsBoss: a hostile npc (friendly 0) of class 3 or more.
         metadata = metadata with { Basic = metadata.Basic with { Friendly = 0, Class = boss ? 3 : 1 } };
-        typeof(FieldManager).GetField("<NpcMetadata>k__BackingField", Any)!.SetValue(Field, AiStateTests.NpcTable([], metadata));
+        metadata = edit?.Invoke(metadata) ?? metadata;
+        typeof(FieldManager).GetField("<NpcMetadata>k__BackingField", Any)!.SetValue(Field, AiStateTests.NpcTable(sequences ?? [], metadata));
         typeof(FieldManager).GetField("<AiMetadata>k__BackingField", Any)!.SetValue(Field, AiStateTests.AiTable());
         FieldNpc npc = Field.SpawnNpc(metadata, position ?? new Vector3(1000, -200, 300), new Vector3(0, 0, 90), disableAi: true)!;
         test.TakeSent();

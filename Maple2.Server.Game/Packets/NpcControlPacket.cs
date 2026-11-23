@@ -86,7 +86,7 @@ public static class NpcControlPacket {
         buffer.WriteNpcEntry(npc,
             flags: npc.ControlFlags,
             velocity: npc.MovementState.Velocity,
-            animSpeed: (short) (npc.Animation.SequenceSpeed * 100),
+            animSpeed: NpcControlRules.WireAnimSpeed(npc.Animation.SequenceSpeed, npc.Animation.Current?.Type),
             bossTargetId: npc.BattleState.TargetId,
             state: state,
             seqId: seqId,

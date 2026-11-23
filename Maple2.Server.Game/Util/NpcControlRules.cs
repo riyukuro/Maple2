@@ -3,6 +3,7 @@ using System.Numerics;
 using Maple2.Model.Common;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
+using Maple2.Server.Game.Model.Enum;
 using Maple2.Server.Game.Packets;
 
 namespace Maple2.Server.Game.Util;
@@ -28,6 +29,12 @@ public static class NpcControlRules {
     public static short WireSequence(ActorState state, short sequence) => state is ActorState.Stun or ActorState.SummonRevive ? (short) -1 : sequence;
 
     public static short WireSequence(ActorState state, short sequence, HitEntry? hit) => state == ActorState.Hit ? hit?.SequenceId ?? -1 : WireSequence(state, sequence);
+
+    // The entry's speed (short x100; the client plays the entry's sequence at it, CNpc::ApplySyncBlock). A cast goes out
+    // at 1: retail captures send 1 in every npc attack entry, also where the npc's skill motion has a sequenceSpeed of
+    // 1.5 or 1.3 (9,724 entries); the client plays a skill motion at its own speed (StateSkill::GetMotionSpeedScale). The
+    // server's own clock for the cast keeps the motion's speed (AnimationManager).
+    public static short WireAnimSpeed(float sequenceSpeed, AnimationType? type) => type == AnimationType.Skill ? (short) 100 : (short) (sequenceSpeed * 100);
 
     // The additional effect stun values that put a monster in the stun state. KMS2 sends the state for 1 and 3;
     // nothing shows it for the other values (2, 4..8, 99), so they are left out.
