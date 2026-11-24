@@ -1,11 +1,13 @@
 ﻿namespace Maple2.Server.Game.Model;
 
 /// <summary>
-/// The recall scroll kinds, as the client numbers them in s2c RecallScroll and c2s RecallScroll.
+/// The recall scroll kinds, as the client numbers them in s2c RecallScroll and c2s RecallScroll: 0 is the guild
+/// notice (s_cash_recall_guild_notice, the m_guildNotify slot), 1 the party one (s_cash_recall_party_notice, m_partyNotify),
+/// 2 the wedding one.
 /// </summary>
 public enum RecallScrollType : byte {
-    Party = 0,
-    Guild = 1,
+    Guild = 0,
+    Party = 1,
     Wedding = 2,
 }
 

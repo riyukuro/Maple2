@@ -548,7 +548,7 @@ public class GuildManager : IDisposable {
     }
 
     /// <summary>
-    /// Offers a guild recall to the other members (s2c RecallScroll type 1 on their channels).
+    /// Offers a guild recall to the other members (s2c RecallScroll type 0 on their channels).
     /// False when there is no one to call, the field forbids recalls or the World refuses.
     /// </summary>
     public bool Recall() {

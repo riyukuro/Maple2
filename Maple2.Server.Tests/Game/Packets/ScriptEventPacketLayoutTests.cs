@@ -94,6 +94,9 @@ public class ScriptEventPacketLayoutTests {
             Assert.That(Hex(PlayerHostPacket.GiftHongBao(1, 2, 3, "O", "P")),
                 Is.EqualTo(Op(SendOp.PlayerHost) + "02" + "01" + Int(1) + Int(2) + Int(3) + "0100" + "4F00" + "0100" + "5000"));
             Assert.That(Hex(RecallScrollPacket.Notify(Maple2.Server.Game.Model.RecallScrollType.Guild, "C", 2000001, 99)),
+                Is.EqualTo(Op(SendOp.RecallScroll) + "01" + "00" + "0100" + "4300" + Int(0) + Int(2000001) + Int(0) + Long(99)));
+            // the client's types: 0 the guild notice (common 0xb64), 1 the party one (0xb63), 2 the wedding one (OnRecallScroll)
+            Assert.That(Hex(RecallScrollPacket.Notify(Maple2.Server.Game.Model.RecallScrollType.Party, "C", 2000001, 99)),
                 Is.EqualTo(Op(SendOp.RecallScroll) + "01" + "01" + "0100" + "4300" + Int(0) + Int(2000001) + Int(0) + Long(99)));
         });
     }
