@@ -462,6 +462,9 @@ public partial class TriggerContext {
             }
 
             fieldNpc.SpawnPointId = spawnId;
+            if (eventSpawn != null) {
+                fieldNpc.SpawnPointSequence = NpcControlRules.SpawnSequence(eventSpawn.SpawnAnimation);
+            }
             fieldNpc.TriggerScore = score;
 
             Field.Broadcast(FieldPacket.AddNpc(fieldNpc));

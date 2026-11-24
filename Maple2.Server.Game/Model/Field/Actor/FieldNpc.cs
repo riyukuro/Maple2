@@ -265,6 +265,9 @@ public class FieldNpc : Actor<Npc> {
     public readonly SkillMetadata?[] Skills;
 
     public int SpawnPointId = 0;
+    // The sequence the client's spawn state plays for a trigger's npc at an event spawn point
+    // (NpcControlRules.SpawnSequence); null for any other npc, which goes through the regen state instead.
+    public string? SpawnPointSequence;
     // The score of the spawn_npc_range that spawned it, added to the open score board when it dies.
     public int TriggerScore;
 
@@ -305,6 +308,8 @@ public class FieldNpc : Actor<Npc> {
     // The corpse box rolls, once a second a player (CorpseLootRolls).
     private readonly CorpseLootRolls corpseRolls = new();
     private byte lastControlFlags;
+    // The state of the last NpcControl entry sent (NpcControlRules.KeepsSerial).
+    private ActorState? lastWireState;
     // The flags byte of this npc's NpcControl entries.
     public byte ControlFlags => NpcControlRules.Flags(BattleState.InBattle, MovementState.State == ActorState.Stun);
     public Action<FieldNpc>? WorldBossDeathCallback { get; set; }
@@ -488,7 +493,11 @@ public class FieldNpc : Actor<Npc> {
         lastControlFlags = controlFlags;
 
         if (SendControl && !IsDead) {
-            SequenceCounter++;
+            ActorState wireState = NpcControlRules.WireState(MovementState.State, MovementState.HitEntry != null, BattleState.InBattle);
+            if (!NpcControlRules.KeepsSerial(wireState, lastWireState)) {
+                SequenceCounter++;
+            }
+            lastWireState = wireState;
             Field.BroadcastNpcControl(this);
             MovementState.HitSent();
             SendControl = false;

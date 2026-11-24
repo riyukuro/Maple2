@@ -16,12 +16,47 @@ public static class NpcControlRules {
 
     public static byte Flags(bool inBattle, bool stunned) => inBattle || stunned ? BattleFlag : (byte) 0;
 
+    // Bit 0 of the flags byte snaps the npc to the entry's rotation. KMS2 and GMS2 set it on every jump entry with
+    // the arc data (flags 3 in all 4 KMS2 and 715 GMS2 of them) and in a few other entries. The client reads it only
+    // when no arc is moving, so on a jump it changes nothing seen; it is sent for the retail shape.
+    public const byte RotateFlag = 1;
+
+    public static byte JumpFlags(byte flags) => (byte) (flags | RotateFlag);
+
     // A cast goes out as state 0 with the skill's sequence: the reader leaves the state alone for 0 and plays the
     // sequence. KMS2 never sends state 16 (the client's StateSkill) for an npc.
-    public static ActorState WireState(ActorState state) => state == ActorState.PcSkill ? ActorState.None : state;
+    // An npc's emote goes out as state 1 with its sequence. KMS2 sends emotion sequences in state 1 (7,786 entries) and
+    // never state 11 or 15 for an npc: the client's npc has neither state, so it drops the change (CStateManager::
+    // ChangeState returns for a state the npc has not registered).
+    public static ActorState WireState(ActorState state) => state switch {
+        ActorState.PcSkill => ActorState.None,
+        ActorState.Emotion or ActorState.EmotionIdle => ActorState.Idle,
+        _ => state,
+    };
 
     // The hit state goes out once, with its fields; for the rest of the hold KMS2 sends state 0 with sequence -1.
-    public static ActorState WireState(ActorState state, bool hitEntry) => state == ActorState.Hit && !hitEntry ? ActorState.None : WireState(state);
+    // A walk in battle (a chase) goes out as state 0 with its sequence: KMS2 sends Run in state 0 with the battle flag
+    // in 82,487 + 4,481 moving entries, and state 2 has the battle flag in 301 of 237,896 entries (GMS2: 248,051 Run
+    // entries in state 0, 15,546 in state 2). The client keeps its state for 0 and moves the npc by the velocity.
+    public static ActorState WireState(ActorState state, bool hitEntry, bool inBattle = false) =>
+        state == ActorState.Hit && !hitEntry ? ActorState.None
+        : state == ActorState.Walk && inBattle ? ActorState.None
+        : WireState(state);
+
+    // Whether an entry keeps the last entry's serial. The client enters the entry's state only on a new serial. KMS2
+    // repeats the spawn and regen states with the serial they started with (all 13,011 repeated spawn entries and
+    // 5,717 regen entries in KMS2), so the client's spawn and regen states run once.
+    public static bool KeepsSerial(ActorState wireState, ActorState? lastWireState) =>
+        wireState is ActorState.Spawn or ActorState.Regen && wireState == lastWireState;
+
+    // The sequence the client's spawn state plays for an event spawn point: its SpawnAnimation, Walk_A when that is
+    // empty (WorldService::FUN_141bcfff0).
+    public static string SpawnSequence(string spawnAnimation) => string.IsNullOrEmpty(spawnAnimation) ? "Walk_A" : spawnAnimation;
+
+    // How long a trigger's npc stays in the spawn state, in ms. The client's StateSpawn hides the npc for 100 to 399 ms
+    // (a draw from its object id), then plays the spawn point's sequence at speed 1 and goes to idle at its end; the
+    // server holds the state for the longest delay and the sequence, so the idle that follows does not cut it.
+    public static long SpawnHold(float sequenceSeconds) => 400 + (long) (Math.Max(sequenceSeconds, 0) * 1000);
 
     // A stunned npc is sent with sequence -1.
     // Stun and a pet's revive state (StateSummonRevive picks its own motion) go out without a sequence.

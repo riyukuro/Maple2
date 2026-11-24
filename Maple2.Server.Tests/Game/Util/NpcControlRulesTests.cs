@@ -232,6 +232,51 @@ public class NpcControlRulesTests {
     }
 
     [Test]
+    public void EmoteGoesOutAsIdle() {
+        Assert.That(NpcControlRules.WireState(ActorState.Emotion), Is.EqualTo(ActorState.Idle));
+        Assert.That(NpcControlRules.WireState(ActorState.EmotionIdle), Is.EqualTo(ActorState.Idle));
+        Assert.That(NpcControlRules.WireState(ActorState.Emotion, false, true), Is.EqualTo(ActorState.Idle));
+        Assert.That((byte) NpcControlRules.WireState(ActorState.Emotion), Is.EqualTo(1));
+    }
+
+    [Test]
+    public void WalkInBattleGoesOutAsStateNone() {
+        Assert.That(NpcControlRules.WireState(ActorState.Walk, false, true), Is.EqualTo(ActorState.None));
+        Assert.That(NpcControlRules.WireState(ActorState.Walk, false, false), Is.EqualTo(ActorState.Walk));
+        Assert.That(NpcControlRules.WireState(ActorState.Walk, false), Is.EqualTo(ActorState.Walk));
+        Assert.That(NpcControlRules.WireState(ActorState.Idle, false, true), Is.EqualTo(ActorState.Idle));
+        Assert.That(NpcControlRules.WireState(ActorState.Hit, true, true), Is.EqualTo(ActorState.Hit));
+        Assert.That(NpcControlRules.WireState(ActorState.Hit, false, true), Is.EqualTo(ActorState.None));
+        Assert.That(NpcControlRules.WireState(ActorState.Spawn, false, true), Is.EqualTo(ActorState.Spawn));
+    }
+
+    [Test]
+    public void JumpEntrySetsTheRotateBit() {
+        Assert.That(NpcControlRules.JumpFlags(NpcControlRules.Flags(true, false)), Is.EqualTo(3));
+        Assert.That(NpcControlRules.JumpFlags(NpcControlRules.Flags(false, false)), Is.EqualTo(1));
+    }
+
+    [Test]
+    public void SpawnAndRegenRepeatsKeepTheSerial() {
+        Assert.That(NpcControlRules.KeepsSerial(ActorState.Spawn, ActorState.Spawn), Is.True);
+        Assert.That(NpcControlRules.KeepsSerial(ActorState.Regen, ActorState.Regen), Is.True);
+        Assert.That(NpcControlRules.KeepsSerial(ActorState.Spawn, null), Is.False);
+        Assert.That(NpcControlRules.KeepsSerial(ActorState.Regen, ActorState.Spawn), Is.False);
+        Assert.That(NpcControlRules.KeepsSerial(ActorState.Idle, ActorState.Regen), Is.False);
+        Assert.That(NpcControlRules.KeepsSerial(ActorState.Idle, ActorState.Idle), Is.False);
+        Assert.That(NpcControlRules.KeepsSerial(ActorState.Walk, ActorState.Walk), Is.False);
+    }
+
+    [Test]
+    public void SpawnStateTakesThePointsSequenceAndHoldsPastTheClientsDelay() {
+        Assert.That(NpcControlRules.SpawnSequence("Regen_A"), Is.EqualTo("Regen_A"));
+        Assert.That(NpcControlRules.SpawnSequence(""), Is.EqualTo("Walk_A"));
+        Assert.That(NpcControlRules.SpawnSequence(null!), Is.EqualTo("Walk_A"));
+        Assert.That(NpcControlRules.SpawnHold(1.5f), Is.EqualTo(1900));
+        Assert.That(NpcControlRules.SpawnHold(0), Is.EqualTo(400));
+    }
+
+    [Test]
     public void StunIsSentWithoutASequence() {
         Assert.That(NpcControlRules.WireSequence(ActorState.Stun, 12), Is.EqualTo(-1));
         Assert.That(NpcControlRules.WireSequence(ActorState.Idle, 12), Is.EqualTo(12));

@@ -301,6 +301,24 @@ public partial class MovementState {
         }
     }
 
+    // A trigger's npc at an event spawn point stays in the spawn state, which the client runs with the point's
+    // sequence (StateSpawn), for NpcControlRules.SpawnHold, then goes to idle. The sequence plays here too (when the
+    // model has it), so the entries carry it.
+    private long spawnEndTick;
+
+    private void SpawnPointUpdate(string sequence) {
+        if (spawnEndTick == 0) {
+            float seconds = actor.Animation.RigMetadata?.Sequences?.TryGetValue(sequence, out AnimationSequenceMetadata? metadata) == true ? metadata.Time : 0;
+            if (actor.Animation.TryPlaySequence(sequence, 1, AnimationType.Misc)) {
+                stateSequence = actor.Animation.PlayingSequence;
+            }
+            spawnEndTick = actor.Field.FieldTick + NpcControlRules.SpawnHold(seconds);
+            actor.SendControl = true;
+        } else if (actor.Field.FieldTick >= spawnEndTick) {
+            Idle();
+        }
+    }
+
     public void StateRegenEvent(string keyName) {
         switch (keyName) {
             case "end":
@@ -334,7 +352,9 @@ public partial class MovementState {
     }
 
     public void Update(long tickCount) {
-        if (State == ActorState.Hit) {
+        if (State == ActorState.Spawn && actor.SpawnPointSequence is { } spawnSequence) {
+            SpawnPointUpdate(spawnSequence);
+        } else if (State == ActorState.Hit) {
             if (tickCount >= hitEndTick) {
                 Idle();
             }
@@ -359,6 +379,8 @@ public partial class MovementState {
         switch (State) {
             case ActorState.Walk:
                 StateWalkUpdate(tickCount, tickDelta);
+                break;
+            case ActorState.Spawn when actor.SpawnPointSequence != null:
                 break;
             case ActorState.Spawn:
                 if (actor.Animation.TryPlaySequence("Regen_A", aniSpeed, AnimationType.Misc)) {

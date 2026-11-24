@@ -53,7 +53,7 @@ public static class NpcControlPacket {
     /// block. Send it once: every packet with sequence -2 / -3 starts the arc again.
     /// </summary>
     public static ByteWriter Jump(FieldNpc npc, short seqId, Vector3 from, Vector3 to, float duration, float scale) =>
-        SingleNpcPacket(npc, flags: npc.ControlFlags, velocity: default, animSpeed: 100,
+        SingleNpcPacket(npc, flags: NpcControlRules.JumpFlags(npc.ControlFlags), velocity: default, animSpeed: 100,
             bossTargetId: npc.BattleState.TargetId, state: ActorState.Jump, seqId: seqId, jump: (from, to, duration, scale));
 
     private static ByteWriter SingleNpcPacket(FieldNpc npc, byte flags, Vector3S velocity,
@@ -79,7 +79,7 @@ public static class NpcControlPacket {
             seqId = -1;
         } else {
             hit = npc.MovementState.HitEntry;
-            state = NpcControlRules.WireState(npc.MovementState.State, hit != null);
+            state = NpcControlRules.WireState(npc.MovementState.State, hit != null, npc.BattleState.InBattle);
             seqId = NpcControlRules.WireSequence(npc.MovementState.State, npc.Animation.PlayingSequence?.Id ?? npc.Animation.IdleSequenceId, hit);
         }
 
