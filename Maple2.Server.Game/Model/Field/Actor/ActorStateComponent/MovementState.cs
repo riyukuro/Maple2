@@ -302,20 +302,30 @@ public partial class MovementState {
     }
 
     // A trigger's npc at an event spawn point stays in the spawn state, which the client runs with the point's
-    // sequence (StateSpawn), for NpcControlRules.SpawnHold, then goes to idle. The sequence plays here too (when the
-    // model has it), so the entries carry it.
+    // sequence (StateSpawn), for NpcControlRules.SpawnHold. The sequence plays here too when the model has it, so the
+    // entries carry it. At the end one entry goes out as state 0 with sequence -1 on the same serial (SpawnEnding),
+    // and the next update goes to idle.
     private long spawnEndTick;
+    // Whether the npc's model has the point's sequence; the spawn entries carry -1 when it does not.
+    public bool SpawnPlays { get; private set; }
+    // The update that sends the entry ending the spawn state.
+    public bool SpawnEnding { get; private set; }
 
     private void SpawnPointUpdate(string sequence) {
         if (spawnEndTick == 0) {
             float seconds = actor.Animation.RigMetadata?.Sequences?.TryGetValue(sequence, out AnimationSequenceMetadata? metadata) == true ? metadata.Time : 0;
-            if (actor.Animation.TryPlaySequence(sequence, 1, AnimationType.Misc)) {
+            SpawnPlays = actor.Animation.TryPlaySequence(sequence, 1, AnimationType.Misc);
+            if (SpawnPlays) {
                 stateSequence = actor.Animation.PlayingSequence;
             }
-            spawnEndTick = actor.Field.FieldTick + NpcControlRules.SpawnHold(seconds);
+            spawnEndTick = actor.Field.FieldTick + NpcControlRules.SpawnHold(SpawnPlays ? seconds : 0);
             actor.SendControl = true;
-        } else if (actor.Field.FieldTick >= spawnEndTick) {
+        } else if (SpawnEnding) {
+            SpawnEnding = false;
             Idle();
+        } else if (actor.Field.FieldTick >= spawnEndTick) {
+            SpawnEnding = true;
+            actor.SendControl = true;
         }
     }
 

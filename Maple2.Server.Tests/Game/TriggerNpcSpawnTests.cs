@@ -125,10 +125,11 @@ public class TriggerNpcSpawnTests : TriggerTestBase {
         Assert.That(Sent(SendOp.FieldAddNpc), Has.Count.EqualTo(2));
     }
 
-    // spawn_monster plays the event spawn point's spawn animation unless auto_target is 0: a missing auto_target
-    // (457 KR rows) reads as the trigger definition's default True.
+    // spawn_monster's auto_target changes nothing sent: an npc at an event point plays the point's sequence in the spawn
+    // state with 0, with 1 and without the attribute (457 KR rows), as KMS2 and GMS2 do, and its talk is not held back.
+    // Before, 1 and a missing value put the point's animation on the npc, which also kept its talk motion off.
     [Test]
-    public void SpawnMonster_SpawnAnimationUnlessTold() {
+    public void SpawnMonster_AutoTargetLeavesTheSpawnAlone() {
         StartSpawns();
         var spawn = new EventSpawnPointNPC("", 5, new Vector3(300, 0, 0), new Vector3(0, 0, 90), true, false, 0, 1,
             [new SpawnPointNPCListEntry(MobId, 1)], 0, 0, "Regen_A");
@@ -138,14 +139,13 @@ public class TriggerNpcSpawnTests : TriggerTestBase {
         Action("""<action name="spawn_monster" spawn_ids="5" />""");
         Action("""<action name="spawn_monster" spawn_ids="5" auto_target="0" />""");
         Action("""<action name="spawn_monster" spawn_ids="5" auto_target="1" />""");
-        Assert.That(Field.Mobs.Values.OrderBy(npc => npc.ObjectId).Select(npc => npc.SpawnAnimation),
-            Is.EqualTo(new[] { "Regen_A", "", "Regen_A" }));
+        Assert.That(Field.Mobs.Values.OrderBy(npc => npc.ObjectId).Select(npc => (npc.SpawnAnimation, npc.SpawnPointSequence)),
+            Is.EqualTo(new[] { ("", "Regen_A"), ("", "Regen_A"), ("", "Regen_A") }));
     }
 
-    // spawn_npc_range's is_auto_targeting plays the event point's spawn animation the way spawn_monster's auto_target
-    // does (KR rows write it: 67 with 1, 52 with 0).
+    // spawn_npc_range's is_auto_targeting is read and left the same way (KR rows write it: 67 with 1, 54 with 0).
     [Test]
-    public void SpawnNpcRange_SpawnAnimationWhenAutoTargeting() {
+    public void SpawnNpcRange_AutoTargetingLeavesTheSpawnAlone() {
         StartSpawns();
         var spawn = new EventSpawnPointNPC("", 5, new Vector3(300, 0, 0), new Vector3(0, 0, 90), true, false, 0, 1,
             [new SpawnPointNPCListEntry(MobId, 1)], 0, 0, "Regen_A");
@@ -154,8 +154,57 @@ public class TriggerNpcSpawnTests : TriggerTestBase {
 
         Action("""<action name="spawn_npc_range" range_ids="5" is_auto_targeting="1" />""");
         Action("""<action name="spawn_npc_range" range_ids="5" is_auto_targeting="0" />""");
-        Assert.That(Field.Mobs.Values.OrderBy(npc => npc.ObjectId).Select(npc => npc.SpawnAnimation),
-            Is.EqualTo(new[] { "Regen_A", "" }));
+        Assert.That(Field.Mobs.Values.OrderBy(npc => npc.ObjectId).Select(npc => (npc.SpawnAnimation, npc.SpawnPointSequence)),
+            Is.EqualTo(new[] { ("", "Regen_A"), ("", "Regen_A") }));
+    }
+
+    // A trigger's npc at an event spawn point stays in the spawn state (17) for 400 ms and its sequence's length, sends one
+    // state 0 entry with sequence -1 on the spawn's serial, then goes to idle on a new serial, as KMS2 does (17 > 0 > 1).
+    // A model without the point's sequence holds 400 ms and its spawn entries carry -1. Ticks of 100 ms.
+    [TestCase(true, 14)]
+    [TestCase(false, 4)]
+    public void SpawnMonster_EventPointSpawnStateEndsWithStateZeroOnItsSerial(bool modelHasSequence, int spawnTicks) {
+        StartSpawns();
+        var spawn = new EventSpawnPointNPC("", 5, new Vector3(300, 0, 0), new Vector3(0, 0, 90), true, false, 0, 1,
+            [new SpawnPointNPCListEntry(MobId, 1)], 0, 0, "Regen_A");
+        typeof(MapEntityMetadata).GetField("<EventNpcSpawns>k__BackingField", Any)!.SetValue(Field.Entities,
+            new Dictionary<int, EventSpawnPointNPC> { [5] = spawn });
+        NpcMetadataStorage table = NpcTable(Npc(MobId, 0));
+        string[] sequences = modelHasSequence ? ["Idle_A", "Regen_A"] : ["Idle_A"];
+        var animations = new LRUCache<string, AnimationMetadata>(10, 1);
+        animations.AddReplace("test_model", new AnimationMetadata("test_model",
+            sequences.Select((name, i) => new AnimationSequenceMetadata(name, (short) i, 1f, [new AnimationKey("end", 1f)])).ToDictionary(sequence => sequence.Name)));
+        typeof(NpcMetadataStorage).GetField("AniCache", Any)!.SetValue(table, animations);
+        typeof(FieldManager).GetField("<NpcMetadata>k__BackingField", Any)!.SetValue(Field, table);
+
+        Action("""<action name="spawn_monster" spawn_ids="5" auto_target="0" />""");
+        FieldNpc npc = Field.Mobs.Values.Single();
+        Assert.That(npc.SpawnPointSequence, Is.EqualTo("Regen_A"));
+
+        var wire = new List<(ActorState state, short sequence, short serial)>();
+        long tick = Field.FieldTick;
+        for (int step = 0; step < 25; step++) {
+            tick += 100;
+            typeof(FieldManager).GetField("<FieldTick>k__BackingField", Any)!.SetValue(Field, tick);
+            Field.Scheduler.InvokeAll();
+            npc.Update(tick);
+            bool end = npc.MovementState.SpawnEnding;
+            ActorState state = NpcControlRules.WireState(npc.MovementState.State, false, false, end);
+            short sequence = npc.MovementState.State == ActorState.Spawn
+                ? NpcControlRules.SpawnSequenceId(npc.MovementState.SpawnPlays, end, npc.Animation.PlayingSequence?.Id ?? -1)
+                : npc.Animation.PlayingSequence?.Id ?? -1;
+            wire.Add((state, sequence, npc.SequenceCounter));
+        }
+
+        short regen = (short) (modelHasSequence ? 1 : -1);
+        var spawnEntries = wire.Take(spawnTicks).ToList();
+        Assert.Multiple(() => {
+            Assert.That(spawnEntries.All(entry => entry.state == ActorState.Spawn && entry.sequence == regen), Is.True, string.Join(" ", wire));
+            Assert.That(spawnEntries.Select(entry => entry.serial).Distinct().Count(), Is.EqualTo(1));
+            Assert.That(wire[spawnTicks], Is.EqualTo((ActorState.None, (short) -1, spawnEntries[0].serial)), string.Join(" ", wire));
+            Assert.That(wire[spawnTicks + 1].state, Is.EqualTo(ActorState.Idle));
+            Assert.That(wire[spawnTicks + 1].serial, Is.EqualTo((short) (spawnEntries[0].serial + 1)));
+        });
     }
 
     // An event point left at NpcCount 0 (the flat default) spawns its whole list: 02000384_bf's 402 is the barricade

@@ -135,14 +135,14 @@ public class TriggerCommand : GameCommand {
                     break;
                 case "spawn_monster":
                     if (parameters.Length < 1) {
-                        ctx.Console.Error.WriteLine("Usage: trigger run spawn_monster <spawnIds> <spawnAnimation>");
+                        ctx.Console.Error.WriteLine("Usage: trigger run spawn_monster <spawnIds> <autoTarget>");
                         return;
                     }
 
                     var spawnIds = parameters[0].Split(',').Select(int.Parse).ToArray();
-                    bool spawnAnimation = parameters.Length > 1 && bool.Parse(parameters[1]);
+                    bool autoTarget = parameters.Length > 1 && bool.Parse(parameters[1]);
 
-                    trigger.Context.SpawnMonster(spawnIds, spawnAnimation, 0);
+                    trigger.Context.SpawnMonster(spawnIds, autoTarget, 0);
                     break;
                 case "move_npc":
                     if (parameters.Length < 2) {

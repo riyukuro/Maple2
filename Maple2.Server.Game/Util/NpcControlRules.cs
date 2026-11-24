@@ -38,25 +38,40 @@ public static class NpcControlRules {
     // A walk in battle (a chase) goes out as state 0 with its sequence: KMS2 sends Run in state 0 with the battle flag
     // in 82,487 + 4,481 moving entries, and state 2 has the battle flag in 301 of 237,896 entries (GMS2: 248,051 Run
     // entries in state 0, 15,546 in state 2). The client keeps its state for 0 and moves the npc by the velocity.
-    public static ActorState WireState(ActorState state, bool hitEntry, bool inBattle = false) =>
-        state == ActorState.Hit && !hitEntry ? ActorState.None
+    // The entry that ends a trigger npc's spawn state (spawnEnd) goes out as state 0 with sequence -1 (SpawnSequenceId)
+    // on the spawn's serial: KMS2 sends it after 17 in 1,680 of 1,935 spawns, then the next state on a new serial within
+    // 400 ms. The client only places the npc for an entry of the same serial, so its spawn state runs to its end.
+    public static ActorState WireState(ActorState state, bool hitEntry, bool inBattle = false, bool spawnEnd = false) =>
+        state == ActorState.Spawn && spawnEnd ? ActorState.None
+        : state == ActorState.Hit && !hitEntry ? ActorState.None
         : state == ActorState.Walk && inBattle ? ActorState.None
         : WireState(state);
 
     // Whether an entry keeps the last entry's serial. The client enters the entry's state only on a new serial. KMS2
     // repeats the spawn and regen states with the serial they started with (all 13,011 repeated spawn entries and
     // 5,717 regen entries in KMS2), so the client's spawn and regen states run once.
-    public static bool KeepsSerial(ActorState wireState, ActorState? lastWireState) =>
-        wireState is ActorState.Spawn or ActorState.Regen && wireState == lastWireState;
+    public static bool KeepsSerial(ActorState wireState, ActorState? lastWireState, bool spawnEnd = false) =>
+        spawnEnd && wireState == ActorState.None && lastWireState == ActorState.Spawn
+        || wireState is ActorState.Spawn or ActorState.Regen && wireState == lastWireState;
 
     // The sequence the client's spawn state plays for an event spawn point: its SpawnAnimation, Walk_A when that is
-    // empty (WorldService::FUN_141bcfff0).
+    // empty (WorldService::FUN_141bcfff0). It plays whatever spawn_monster's auto_target says: of the KMS2 trigger
+    // spawns at points the trigger data gives one value, 813 of 1,600 with auto_target 0 and 332 of 491 with 1 carry the
+    // sequence (the rest have models without it), and 653 and 71 go into battle within 2 s, by the map; GMS2: 2,607
+    // of 5,361 and 1,330 of 1,578, battle 1,365 and 576. Npcs of 1 get the talk state too (KMS2 15, GMS2 26).
     public static string SpawnSequence(string spawnAnimation) => string.IsNullOrEmpty(spawnAnimation) ? "Walk_A" : spawnAnimation;
 
     // How long a trigger's npc stays in the spawn state, in ms. The client's StateSpawn hides the npc for 100 to 399 ms
     // (a draw from its object id), then plays the spawn point's sequence at speed 1 and goes to idle at its end; the
     // server holds the state for the longest delay and the sequence, so the idle that follows does not cut it.
+    // A sequence the npc's model lacks has no length (the client idles right after its delay), so the hold is 400 ms;
+    // KMS2 holds those spawns 200 to 500 ms and the Regen_A ones 1.3 to 1.8 s (10th to 90th percentile).
     public static long SpawnHold(float sequenceSeconds) => 400 + (long) (Math.Max(sequenceSeconds, 0) * 1000);
+
+    // The sequence of a spawn state entry: -1 when the npc's model lacks the point's sequence (KMS2 sends -1 in
+    // 931 spawns, all of models without Regen_A, and Regen_A in 894 spawns, all of models with it) and in
+    // the entry that ends the state; otherwise the sequence playing.
+    public static short SpawnSequenceId(bool modelHasSequence, bool spawnEnd, short playing) => modelHasSequence && !spawnEnd ? playing : (short) -1;
 
     // A stunned npc is sent with sequence -1.
     // Stun and a pet's revive state (StateSummonRevive picks its own motion) go out without a sequence.

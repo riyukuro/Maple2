@@ -493,8 +493,8 @@ public class FieldNpc : Actor<Npc> {
         lastControlFlags = controlFlags;
 
         if (SendControl && !IsDead) {
-            ActorState wireState = NpcControlRules.WireState(MovementState.State, MovementState.HitEntry != null, BattleState.InBattle);
-            if (!NpcControlRules.KeepsSerial(wireState, lastWireState)) {
+            ActorState wireState = NpcControlRules.WireState(MovementState.State, MovementState.HitEntry != null, BattleState.InBattle, MovementState.SpawnEnding);
+            if (!NpcControlRules.KeepsSerial(wireState, lastWireState, MovementState.SpawnEnding)) {
                 SequenceCounter++;
             }
             lastWireState = wireState;

@@ -277,6 +277,25 @@ public class NpcControlRulesTests {
     }
 
     [Test]
+    public void TheSpawnStateEndsWithAStateZeroEntryOnItsSerialAndNoSequence() {
+        // the entry ending the spawn: state 0, sequence -1, the spawn's serial
+        Assert.That(NpcControlRules.WireState(ActorState.Spawn, false, false, spawnEnd: true), Is.EqualTo(ActorState.None));
+        Assert.That(NpcControlRules.KeepsSerial(ActorState.None, ActorState.Spawn, spawnEnd: true), Is.True);
+        Assert.That(NpcControlRules.SpawnSequenceId(true, true, 12), Is.EqualTo(-1));
+        // the spawn entries before it: state 17 with the playing sequence, or -1 when the model lacks it
+        Assert.That(NpcControlRules.WireState(ActorState.Spawn, false, false), Is.EqualTo(ActorState.Spawn));
+        Assert.That(NpcControlRules.SpawnSequenceId(true, false, 12), Is.EqualTo(12));
+        Assert.That(NpcControlRules.SpawnSequenceId(false, false, 12), Is.EqualTo(-1));
+        // a state 0 entry after the spawn that is not its end (a cast) takes a new serial, as do the idle after the end
+        // and a state 0 entry after anything else
+        Assert.That(NpcControlRules.KeepsSerial(ActorState.None, ActorState.Spawn), Is.False);
+        Assert.That(NpcControlRules.KeepsSerial(ActorState.Idle, ActorState.None), Is.False);
+        Assert.That(NpcControlRules.KeepsSerial(ActorState.None, ActorState.Idle, spawnEnd: true), Is.False);
+        // other states are not touched by the flag
+        Assert.That(NpcControlRules.WireState(ActorState.Idle, false, false, spawnEnd: true), Is.EqualTo(ActorState.Idle));
+    }
+
+    [Test]
     public void StunIsSentWithoutASequence() {
         Assert.That(NpcControlRules.WireSequence(ActorState.Stun, 12), Is.EqualTo(-1));
         Assert.That(NpcControlRules.WireSequence(ActorState.Idle, 12), Is.EqualTo(12));

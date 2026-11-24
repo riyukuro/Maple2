@@ -79,8 +79,11 @@ public static class NpcControlPacket {
             seqId = -1;
         } else {
             hit = npc.MovementState.HitEntry;
-            state = NpcControlRules.WireState(npc.MovementState.State, hit != null, npc.BattleState.InBattle);
+            state = NpcControlRules.WireState(npc.MovementState.State, hit != null, npc.BattleState.InBattle, npc.MovementState.SpawnEnding);
             seqId = NpcControlRules.WireSequence(npc.MovementState.State, npc.Animation.PlayingSequence?.Id ?? npc.Animation.IdleSequenceId, hit);
+            if (npc.MovementState.State == ActorState.Spawn && npc.SpawnPointSequence != null) {
+                seqId = NpcControlRules.SpawnSequenceId(npc.MovementState.SpawnPlays, npc.MovementState.SpawnEnding, seqId);
+            }
         }
 
         buffer.WriteNpcEntry(npc,

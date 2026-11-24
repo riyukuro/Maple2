@@ -20,13 +20,16 @@ public partial class TriggerContext {
         SpawnMonster(addSpawnId);
     }
 
+    // autoTarget (arg2, also written agr2 and arg) changes nothing the client is sent: KMS2 and GMS2 start the npcs of
+    // 0 and 1 alike in the spawn state with the point's sequence, go into battle within 2 s by the map and not by the
+    // flag, and send the talk state to npcs of both (NpcControlRules.SpawnSequence has the counts). It is read and left.
     public void SpawnMonster(int[] spawnIds, bool autoTarget, int delay) {
         DebugLog("[CreateMonster] spawnIds:{SpawnIds}, autoTarget:{AutoTarget}, delay:{Delay}", string.Join(", ", spawnIds), autoTarget, delay);
         foreach (int spawnId in spawnIds) {
             if (delay > 0) {
-                Events.Schedule(() => SpawnNpc(spawnId, autoTarget), TimeSpan.FromMilliseconds(delay));
+                Events.Schedule(() => SpawnNpc(spawnId), TimeSpan.FromMilliseconds(delay));
             } else {
-                SpawnNpc(spawnId, autoTarget);
+                SpawnNpc(spawnId);
             }
         }
     }
@@ -234,8 +237,8 @@ public partial class TriggerContext {
 
         // Each npc carries the score: its death adds it to the open board (FieldManager.AddScoreBoardScore).
         foreach (int spawnId in TriggerRandomPick.Pick(spawnIds, randomPickCount, Random.Shared)) {
-            // is_auto_targeting plays the point's spawn animation, as spawn_monster's auto_target does.
-            SpawnNpc(spawnId, isAutoTargeting, score);
+            // is_auto_targeting is read and left, as spawn_monster's auto_target is.
+            SpawnNpc(spawnId, score);
         }
     }
 
@@ -400,7 +403,7 @@ public partial class TriggerContext {
         return npcSpawns.FirstOrDefault(spawn => spawn.SpawnPointId == spawnId);
     }
 
-    private void SpawnNpc(int spawnId, bool useSpawnAnimation = false, int score = 0) {
+    private void SpawnNpc(int spawnId, int score = 0) {
         SpawnPointNPC? spawn = FindSpawnPoint(Field.Entities.EventNpcSpawns, Field.Entities.NpcSpawns, spawnId);
         if (spawn == null) {
             logger.Warning("[SpawnNpc] Trigger {Trigger} of field {MapId}: no spawn point {SpawnId}", owner.Value.Name, Field.MapId, spawnId);
@@ -442,10 +445,6 @@ public partial class TriggerContext {
                 continue;
             }
 
-            string spawnAnimationString = string.Empty;
-            if (!string.IsNullOrEmpty(eventSpawn?.SpawnAnimation) && useSpawnAnimation) {
-                spawnAnimationString = eventSpawn.SpawnAnimation;
-            }
             Vector3 position = InSealedRoom(Field.MapId, spawnId) ? Field.NearestPlayerFloor(spawn.Position, SealedRoomReach) : spawn.Position;
             if (IsRearSpawn(Field.MapId, spawnId)) {
                 Vector3? player = Field.Players.Values.Select(p => (Vector3?) p.Position)
@@ -455,7 +454,7 @@ public partial class TriggerContext {
                     position = Field.NearestPlayerFloor(rear, RearSpawnFloorReach);
                 }
             }
-            FieldNpc? fieldNpc = Field.SpawnNpc(npc, position, spawn.Rotation, spawnPointNpc: spawn, spawnAnimation: spawnAnimationString);
+            FieldNpc? fieldNpc = Field.SpawnNpc(npc, position, spawn.Rotation, spawnPointNpc: spawn);
             if (fieldNpc == null) {
                 logger.Error("[SpawnNpc] Failed to spawn npcId:{NpcId}", npcId);
                 continue;
