@@ -14,6 +14,7 @@ public static class FunctionCubeCloseRule {
                 return false; // no dialog; a switch keeps its state
         }
 
-        return state == InteractCubeState.InUse && defaultState != InteractCubeState.InUse && holderId != 0 && holderId == closerId;
+        InteractCubeState taken = FunctionCubeUseRule.TakenState(type);
+        return state == taken && defaultState != taken && holderId != 0 && holderId == closerId;
     }
 }

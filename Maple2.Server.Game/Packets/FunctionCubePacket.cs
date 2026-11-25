@@ -5,6 +5,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Model;
 using Maple2.Tools.Extensions;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Packets;
 
@@ -59,7 +60,7 @@ public static class FunctionCubePacket {
         pWriter.Write<Command>(Command.Furniture);
         pWriter.WriteLong(characterId);
         pWriter.WriteUnicodeString(interactCube.Id);
-        pWriter.WriteBool(interactCube.State is InteractCubeState.InUse);
+        pWriter.WriteBool(FunctionCubeUseRule.IsTaken(interactCube.Metadata.ControlType, interactCube.State));
         return pWriter;
     }
 

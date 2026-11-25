@@ -154,7 +154,10 @@ public class FunctionCubeHandler : FieldPacketHandler {
                 }
                 break;
             default:
-                if (fieldInteract.InteractCube.State is InteractCubeState.InUse && fieldInteract.InteractCube.InteractingCharacterId != session.CharacterId) {
+                // A cube another player holds in use stays theirs. A FunctionUI cube is taken to its second state, not
+                // to 1: its default state is 1, which read as taken refused every use of a bank cube.
+                InteractCubeState taken = FunctionCubeUseRule.TakenState(fieldInteract.Value.ControlType);
+                if (fieldInteract.InteractCube.State == taken && fieldInteract.InteractCube.InteractingCharacterId != session.CharacterId) {
                     return;
                 }
                 bool isInDefaultState = fieldInteract.InteractCube.State == fieldInteract.InteractCube.Metadata.DefaultState;
@@ -178,7 +181,7 @@ public class FunctionCubeHandler : FieldPacketHandler {
                 } else if (fieldInteract.InteractCube.InteractingCharacterId == session.CharacterId) {
                     session.SeatRelease.Released(interactId, tick);
                 }
-                fieldInteract.InteractCube.State = isInDefaultState ? InteractCubeState.InUse : fieldInteract.InteractCube.Metadata.DefaultState;
+                fieldInteract.InteractCube.State = isInDefaultState ? taken : fieldInteract.InteractCube.Metadata.DefaultState;
                 fieldInteract.InteractCube.InteractingCharacterId = isInDefaultState ? session.CharacterId : 0;
                 session.Field?.Broadcast(FunctionCubePacket.UpdateFunctionCube(fieldInteract.InteractCube));
                 session.Field?.Broadcast(FunctionCubePacket.UseFurniture(session.CharacterId, fieldInteract.InteractCube));

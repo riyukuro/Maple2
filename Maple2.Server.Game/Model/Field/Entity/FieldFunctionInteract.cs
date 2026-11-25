@@ -22,7 +22,10 @@ public class FieldFunctionInteract : FieldEntity<FunctionCubeMetadata> {
 
     public override void Update(long tickCount) {
         lock (InteractCube) {
-            if (InteractCube.Metadata.ControlType is InteractCubeControlType.Notice) {
+            // A FunctionUI cube's state is its holder's: the use takes it to 2 and the close, a second use or the
+            // holder's leave give it back to its default 1. Sent to 2 here at its first update, it read as in use by
+            // nobody, and each use's reply came after a state 1 update, so the client never opened its dialog.
+            if (InteractCube.Metadata.ControlType is InteractCubeControlType.Notice or InteractCubeControlType.FunctionUI) {
                 return;
             }
             if (InteractCube.State is InteractCubeState.Available or InteractCubeState.None) {
