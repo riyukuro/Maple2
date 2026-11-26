@@ -205,6 +205,19 @@ public class ItemCommand : GameCommand {
                 ctx.Console.Error.WriteLine($"--limit-break {limitBreak} is past the item's maximum {max}.");
                 return false;
             }
+            // The game's limit break needs the item at its enchant maximum first (LimitBreakRules.IsItem), and keeps
+            // that enchant object with Enchants 0 afterwards (ItemEnchantManager.LimitBreakEnchant); build the +15 the
+            // enchant manager would have made, so the item carries the same enchant stats as a played one.
+            if (!ItemEnchantRules.CanEnchant(session.ServerTableMetadata.EnchantLimitTable, property.Type, GearScoreRules.SubType(item.Id),
+                    item.Metadata.Limit.Level, item.Metadata.Limit.EnableEnchant, ItemEnchantRules.MaxGrade - 1, 0, item.ExpiryTime)) {
+                ctx.Console.Error.WriteLine($"--limit-break {limitBreak} needs an item that can reach +{ItemEnchantRules.MaxGrade} (its slot, level or enchant limit refuses it).");
+                return false;
+            }
+            ItemEnchant? enchant15 = BuildEnchant(session, item, ItemEnchantRules.MaxGrade);
+            if (enchant15 == null) {
+                ctx.Console.Error.WriteLine($"the enchant table has no +{ItemEnchantRules.MaxGrade} row for item {item.Id} at rarity {item.Rarity}.");
+                return false;
+            }
             if (!session.ServerTableMetadata.UnlimitedEnchantOptionTable.Entries.TryGetValue(item.Type.Type, out Dictionary<int, UnlimitedEnchantOptionTable.Option>? levels)) {
                 ctx.Console.Error.WriteLine($"the limit break table has no options for item {item.Id}'s slot {item.Type.Type}.");
                 return false;
@@ -233,6 +246,8 @@ public class ItemCommand : GameCommand {
                 }
             }
             limit.Level = limitBreak;
+            item.Enchant = enchant15;
+            item.Enchant.Enchants = 0;   // the game's limit-broken item: the +15 options stay, the level is 0
             item.LimitBreak = limit;
         }
         // The sockets the item's creation gave it: the itemsocket row of its socketDataId, or the same Lua rule
@@ -280,6 +295,24 @@ public class ItemCommand : GameCommand {
         return true;
     }
 
+    // The enchant the enchant manager's successful grades would have made: each grade's increment added to the last,
+    // through the target, as ItemEnchantManager.ApplyEnchantStats does level by level. Null when a grade has no row.
+    private static ItemEnchant? BuildEnchant(GameSession session, Item item, int level) {
+        var enchant = new ItemEnchant();
+        for (int target = 1; target <= level; target++) {
+            ItemEnchant step = ItemEnchantManager.GetEnchant(session, item, target);
+            if (step.Enchants != target) {
+                return null;
+            }
+            foreach ((BasicAttribute attribute, BasicOption option) in step.BasicOptions) {
+                enchant.BasicOptions[attribute] = enchant.BasicOptions.TryGetValue(attribute, out BasicOption existing)
+                    ? existing + option : option;
+            }
+        }
+        enchant.Enchants = level;
+        return enchant;
+    }
+
     // A client stat or special id and its value ("31=5"): the client's ids are what its tooltip and the browser show
     // (BasicAttributeIds.TryServerStat; a special id is the SpecialAttribute's value), and the value is the int the
     // client prints (a rate in tenths/ thousandths by the client's stat table, as every item option is).
@@ -293,7 +326,7 @@ public class ItemCommand : GameCommand {
             }
             if (special) {
                 if (id <= 0 || id >= 0xcf || !Enum.IsDefined((SpecialAttribute) id)) {
-                    ctx.Console.Error.WriteLine($"--special {line}: {id} is not a special ability id (0..{0xce}).");
+                    ctx.Console.Error.WriteLine($"--special {line}: {id} is not a special ability id (1..{0xce}).");
                     return false;
                 }
                 item.Stats![ItemStats.Type.Random].Special[(SpecialAttribute) id] = new SpecialOption(value);

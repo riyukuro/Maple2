@@ -15,6 +15,8 @@ namespace Maple2.Server.Tests.Game.Commands;
 // adds nothing.
 public class ItemCommandEnhancementsTests {
     private const int GearId = 11200001;   // id type 12: an accessory, the gem kind that fits equipPart 3
+    private const int LbGearId = 11200007; // the same slot at rarity 5, with an enchant row for every grade
+    private const int HatId = 11300001;    // slot 13, whose enchant limit stops below +15
     private const int LuaGearId = 11200006; // another accessory, with no socketDataId: the client's Lua socket rule
     private const int GemId = 40200001;
     private const int GemId2 = 40200002;
@@ -25,6 +27,22 @@ public class ItemCommandEnhancementsTests {
             Property = metadata.Property with {
                 Type = 1, SlotMax = 1, SubType = 0, SocketId = 7, LimitBreakMaxLevel = 5, Rank = 3,   // the command takes the slot from the id
             },
+            Limit = metadata.Limit with { Level = 50, EnableEnchant = true },
+        };
+    }
+
+    private static ItemMetadata LbGearMetadata() {
+        ItemMetadata metadata = TestGameSession.Metadata(LbGearId);
+        return metadata with {
+            Property = metadata.Property with { Type = 1, SlotMax = 1, SubType = 0, SocketId = 0, LimitBreakMaxLevel = 5, Rank = 5 },
+            Limit = metadata.Limit with { Level = 50, EnableEnchant = true },
+        };
+    }
+
+    private static ItemMetadata HatMetadata() {
+        ItemMetadata metadata = TestGameSession.Metadata(HatId);
+        return metadata with {
+            Property = metadata.Property with { Type = 1, SlotMax = 1, SubType = 0, SocketId = 0, LimitBreakMaxLevel = 5, Rank = 3 },
             Limit = metadata.Limit with { Level = 50, EnableEnchant = true },
         };
     }
@@ -46,10 +64,15 @@ public class ItemCommandEnhancementsTests {
         var test = new TestGameSession();
         test.SetServerTable(new EnchantLimitTable(new Dictionary<int, EnchantLimitTable.Limit> {
             [12] = new(MinLevel: 20, MaxLevel: 99, MaxGrade: 15),
+            [13] = new(MinLevel: 20, MaxLevel: 99, MaxGrade: 14),
         }));
-        test.SetServerTable(new EnchantOptionTable(new Dictionary<int, EnchantOptionMetadata> {
+        var enchantRows = new Dictionary<int, EnchantOptionMetadata> {
             [1] = new(Id: 1, Slot: 12, EnchantLevel: 3, Rarity: 3, Rate: 0.016f, MinLevel: 20, MaxLevel: 99, Attributes: [BasicAttribute.Piercing]),
-        }));
+        };
+        for (int level = 1; level <= 15; level++) {
+            enchantRows[100 + level] = new(Id: 100 + level, Slot: 12, EnchantLevel: level, Rarity: 5, Rate: 0.016f, MinLevel: 20, MaxLevel: 99, Attributes: [BasicAttribute.Piercing]);
+        }
+        test.SetServerTable(new EnchantOptionTable(enchantRows));
         test.SetServerTable(new UnlimitedEnchantOptionTable(new Dictionary<int, Dictionary<int, UnlimitedEnchantOptionTable.Option>> {
             [12] = new() {
                 [1] = new(new Dictionary<BasicAttribute, int> { [BasicAttribute.Strength] = 10 },
@@ -69,7 +92,7 @@ public class ItemCommandEnhancementsTests {
             [GemId] = new(Level: 1, NextItemId: 0, Ingredients: [], EquipPart: 3),
             [GemId2] = new(Level: 1, NextItemId: 0, Ingredients: [], EquipPart: 3),
         }));
-        test.Register(GearMetadata(), LuaGearMetadata(), GemMetadata(GemId), GemMetadata(GemId2), TestGameSession.Metadata(20000004, type: 2));
+        test.Register(GearMetadata(), LbGearMetadata(), HatMetadata(), LuaGearMetadata(), GemMetadata(GemId), GemMetadata(GemId2), TestGameSession.Metadata(20000004, type: 2));
         test.SetTable(new ItemOptionPickTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOptionPickTable.Option>>()));
         test.SetTable(new ItemOptionConstantTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOptionConstant>>()));
         test.SetTable(new ItemOptionRandomTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOption>>()));
@@ -112,24 +135,35 @@ public class ItemCommandEnhancementsTests {
     [Test]
     public void LimitBreak_AddsEveryLevel() {
         (_, GameSession session) = Start();
-        (int code, string error) = Run(session, GearId.ToString(), "--limit-break", "2");
+        (int code, string error) = Run(session, LbGearId.ToString(), "--limit-break", "2");
         Assert.That(error, Is.Empty);
         Assert.That(code, Is.EqualTo(0));
-        Item item = Spawned(session, GearId)!;
+        Item item = Spawned(session, LbGearId)!;
         Assert.Multiple(() => {
             Assert.That(item.LimitBreak!.Level, Is.EqualTo(2));
             Assert.That(item.LimitBreak.BasicOptions[BasicAttribute.Strength].Value, Is.EqualTo(10));
             Assert.That(item.LimitBreak.BasicOptions[BasicAttribute.Piercing].Value, Is.EqualTo(5));
+            Assert.That(item.Enchant!.Enchants, Is.Zero, "the game's limit-broken item has its enchant level at 0");
+            Assert.That(item.Enchant.BasicOptions[BasicAttribute.Piercing].Value, Is.EqualTo(15 * 16), "the +15 enchant options stay");
         });
     }
 
     [Test]
     public void LimitBreak_NeedsEnoughTableLevelsAndNoEnchant() {
         (_, GameSession session) = Start();
-        Assert.That(Run(session, GearId.ToString(), "--limit-break", "6").Error, Does.Contain("past the item's maximum 5"));
-        Assert.That(Run(session, GearId.ToString(), "--limit-break", "3").Error, Does.Contain("no level 3"));
-        Assert.That(Run(session, GearId.ToString(), "--enchant", "1", "--limit-break", "1").Error, Does.Contain("cannot be set together"));
-        Assert.That(session.Item.Inventory.Find(GearId), Is.Empty);
+        Assert.That(Run(session, LbGearId.ToString(), "--limit-break", "6").Error, Does.Contain("past the item's maximum 5"));
+        Assert.That(Run(session, LbGearId.ToString(), "--limit-break", "3").Error, Does.Contain("no level 3"));
+        Assert.That(Run(session, LbGearId.ToString(), "--enchant", "1", "--limit-break", "1").Error, Does.Contain("cannot be set together"));
+        Assert.That(session.Item.Inventory.Find(LbGearId), Is.Empty);
+    }
+
+    [Test]
+    public void LimitBreak_NeedsASlotThatCanReachTheFifteenEnchant() {
+        (_, GameSession session) = Start();
+        (int code, string error) = Run(session, HatId.ToString(), "--limit-break", "1");
+        Assert.That(code, Is.Not.EqualTo(0));
+        Assert.That(error, Does.Contain("reach +15"));
+        Assert.That(session.Item.Inventory.Find(HatId), Is.Empty);
     }
 
     [Test]
@@ -233,7 +267,7 @@ public class ItemCommandEnhancementsTests {
     public void BonusLines_RejectBadIdsAndValues() {
         (_, GameSession session) = Start();
         Assert.That(Run(session, GearId.ToString(), "--stat", "35=5").Error, Does.Contain("not a client stat id"));
-        Assert.That(Run(session, GearId.ToString(), "--special", "200=5").Error, Does.Contain("not a special ability id"));
+        Assert.That(Run(session, GearId.ToString(), "--special", "200=5").Error, Does.Contain("not a special ability id (1..206)"));
         Assert.That(Run(session, GearId.ToString(), "--stat", "31=-1").Error, Does.Contain("0 to 1000000"));
         Assert.That(Run(session, GearId.ToString(), "--stat", "31").Error, Does.Contain("clientId=value"));
         Assert.That(session.Item.Inventory.Find(GearId), Is.Empty);
