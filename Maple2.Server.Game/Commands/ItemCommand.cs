@@ -6,6 +6,10 @@ using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
+using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
+using Maple2.Tools.Extensions;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 
@@ -27,16 +31,33 @@ public class ItemCommand : GameCommand {
         var rarity = new Option<int>(["--rarity", "-r"], () => 0, "Rarity of the item (default: the item's own).");
         var drop = new Option<bool>(["--drop"], "Drop item instead of adding to inventory");
         var rollMax = new Option<bool>(["--roll-max"], () => false, "Max roll stats.");
+        var enchant = new Option<int>(["--enchant"], () => 0, "Enchant level 0..15 (gear only).");
+        var limitBreak = new Option<int>(["--limit-break"], () => 0, "Limit break level 0..the item's maximum (gear only; no enchant with it).");
+        var sockets = new Option<int>(["--socket"], () => -1, "Unlocked sockets 0..5 (gear only; -1 leaves the item's own).");
+        var gems = new Option<int[]>(["--gem"], "A gem item id for an unlocked socket, in order (repeat or list; gear only).");
+        var stats = new Option<string[]>(["--stat"], "A bonus stat as clientStatId=value, in the random group (repeat; gear only).");
+        var specials = new Option<string[]>(["--special"], "A bonus special ability as clientSpecialId=value, in the random group (repeat; gear only).");
+        var bonusClear = new Option<bool>(["--bonus-clear"], () => false, "Clear the rolled random options, so only the --stat/--special lines stay.");
 
         AddArgument(id);
         AddOption(amount);
         AddOption(rarity);
         AddOption(drop);
         AddOption(rollMax);
-        this.SetHandler<InvocationContext, int, int, int, bool, bool>(Handle, id, amount, rarity, drop, rollMax);
+        AddOption(enchant);
+        AddOption(limitBreak);
+        AddOption(sockets);
+        AddOption(gems);
+        AddOption(stats);
+        AddOption(specials);
+        AddOption(bonusClear);
+        this.SetHandler<InvocationContext, int, int, int, bool, bool, int, int, int, int[], string[], string[], bool>(Handle,
+            id, amount, rarity, drop, rollMax, enchant, limitBreak, sockets, gems, stats, specials, bonusClear);
     }
 
-    private void Handle(InvocationContext ctx, int itemId, int amount, int rarity, bool drop, bool rollMax) {
+    // Every option of the item command: the spawning ones and the enhancement options the debug item browser sends.
+    private void Handle(InvocationContext ctx, int itemId, int amount, int rarity, bool drop, bool rollMax,
+                        int enchant, int limitBreak, int sockets, int[] gems, string[] stats, string[] specials, bool bonusClear) {
         if (session.Field is null) return;
         try {
             // No rarity given: the item's own, as every other source makes it (ItemDropManager.CreateItem). A fixed
@@ -47,6 +68,12 @@ public class ItemCommand : GameCommand {
             Item? firstItem = session.Field.ItemDrop.CreateItem(itemId, rarity, rollMax: rollMax);
             if (firstItem == null) {
                 ctx.Console.Error.WriteLine($"Invalid Item: {itemId}");
+                return;
+            }
+
+            if (!ApplyEnhancements(ctx, firstItem, enchant, limitBreak, sockets, gems ?? Array.Empty<int>(),
+                    stats ?? Array.Empty<string>(), specials ?? Array.Empty<string>(), bonusClear)) {
+                ctx.ExitCode = 1;
                 return;
             }
 
@@ -116,6 +143,158 @@ public class ItemCommand : GameCommand {
             ctx.Console.Error.WriteLine(ex.Message);
             ctx.ExitCode = 1;
         }
+    }
+
+    // The enhancement options: a gear item only, each value checked against the server's own tables so an impossible
+    // command is a chat line, never a broken item or a crash. The enchant's options come from the enchant table the
+    // enchant manager uses (ItemEnchantManager.GetEnchant), the limit break's from the unlimited enchant table as the
+    // manager applies them level by level, and a socket's gem must be one the client would offer (the gemstone upgrade
+    // row fits the item's kind, as ItemSocketHandler.HandleEquipGemstone checks).
+    private bool ApplyEnhancements(InvocationContext ctx, Item item, int enchant, int limitBreak, int sockets, int[] gems,
+                                   string[] stats, string[] specials, bool bonusClear) {
+        bool wants = enchant > 0 || limitBreak > 0 || sockets >= 0 || gems.Length > 0 || stats.Length > 0 || specials.Length > 0 || bonusClear;
+        if (!wants) {
+            return true;
+        }
+        ItemMetadataProperty property = item.Metadata.Property;
+        if (property.Type != 1) {
+            ctx.Console.Error.WriteLine("--enchant, --limit-break, --socket, --gem, --stat, --special and --bonus-clear need a gear item (type 1).");
+            return false;
+        }
+        if (enchant < 0 || enchant > ItemEnchantRules.MaxGrade) {
+            ctx.Console.Error.WriteLine($"--enchant is 0..{ItemEnchantRules.MaxGrade}.");
+            return false;
+        }
+        if (enchant > 0 && limitBreak > 0) {
+            ctx.Console.Error.WriteLine("--enchant and --limit-break cannot be set together: a limit-broken item has no enchant.");
+            return false;
+        }
+        if (enchant > 0) {
+            if (!ItemEnchantRules.CanEnchant(session.ServerTableMetadata.EnchantLimitTable, property.Type, property.SubType,
+                    item.Metadata.Limit.Level, item.Metadata.Limit.EnableEnchant, enchant - 1, 0, item.ExpiryTime)) {
+                ctx.Console.Error.WriteLine($"--enchant {enchant} is not possible for item {item.Id} (its slot, level or enchant limit refuses it).");
+                return false;
+            }
+            ItemEnchant leveled = ItemEnchantManager.GetEnchant(session, item, enchant);
+            if (leveled.Enchants != enchant) {
+                ctx.Console.Error.WriteLine($"--enchant {enchant} has no row in the enchant table for item {item.Id} at rarity {item.Rarity}.");
+                return false;
+            }
+            item.Enchant = leveled;
+        }
+        if (limitBreak > 0) {
+            int max = property.LimitBreakMaxLevel;
+            if (max <= 0) {
+                ctx.Console.Error.WriteLine($"item {item.Id} has no limit break.");
+                return false;
+            }
+            if (limitBreak > max) {
+                ctx.Console.Error.WriteLine($"--limit-break {limitBreak} is past the item's maximum {max}.");
+                return false;
+            }
+            if (!session.ServerTableMetadata.UnlimitedEnchantOptionTable.Entries.TryGetValue(item.Type.Type, out Dictionary<int, UnlimitedEnchantOptionTable.Option>? levels)) {
+                ctx.Console.Error.WriteLine($"the limit break table has no options for item {item.Id}'s slot {item.Type.Type}.");
+                return false;
+            }
+            var limit = new ItemLimitBreak();
+            for (int level = 1; level <= limitBreak; level++) {
+                if (!levels.TryGetValue(level, out UnlimitedEnchantOptionTable.Option? option)) {
+                    ctx.Console.Error.WriteLine($"the limit break table has no level {level} for item {item.Id}'s slot.");
+                    return false;
+                }
+                foreach ((BasicAttribute attribute, int value) in option.Values) {
+                    limit.BasicOptions[attribute] = limit.BasicOptions.TryGetValue(attribute, out BasicOption had)
+                        ? had + new BasicOption(value) : new BasicOption(value);
+                }
+                foreach ((BasicAttribute attribute, float rate) in option.Rates) {
+                    limit.BasicOptions[attribute] = limit.BasicOptions.TryGetValue(attribute, out BasicOption had)
+                        ? had + new BasicOption(rate) : new BasicOption(rate);
+                }
+                foreach ((SpecialAttribute attribute, int value) in option.SpecialValues) {
+                    limit.SpecialOptions[attribute] = limit.SpecialOptions.TryGetValue(attribute, out SpecialOption had)
+                        ? had + new SpecialOption(value) : new SpecialOption(value);
+                }
+                foreach ((SpecialAttribute attribute, float rate) in option.SpecialRates) {
+                    limit.SpecialOptions[attribute] = limit.SpecialOptions.TryGetValue(attribute, out SpecialOption had)
+                        ? had + new SpecialOption(rate) : new SpecialOption(rate);
+                }
+            }
+            limit.Level = limitBreak;
+            item.LimitBreak = limit;
+        }
+        int maxSockets = 0;
+        if (property.SocketId != 0) {
+            ItemSocketTable table = session.TableMetadata.ItemSocketTable;
+            if (!table.Entries.TryGetValue(property.SocketId, item.Rarity, out ItemSocketMetadata? socketRow)) {
+                table.Entries.TryGetValue(property.SocketId, 0, out socketRow);
+            }
+            maxSockets = Math.Min((int)(socketRow?.MaxCount ?? 0), MAX_SOCKET);
+        }
+        if (sockets >= 0 || gems.Length > 0) {
+            if (maxSockets <= 0) {
+                ctx.Console.Error.WriteLine($"item {item.Id} has no sockets.");
+                return false;
+            }
+            if (sockets < 0) sockets = Math.Min(gems.Length, maxSockets);
+            if (sockets > maxSockets) {
+                ctx.Console.Error.WriteLine($"--socket {sockets} is past the item's {maxSockets} sockets.");
+                return false;
+            }
+            if (gems.Length > sockets) {
+                ctx.Console.Error.WriteLine($"--gem has {gems.Length} ids for {sockets} unlocked socket(s).");
+                return false;
+            }
+            var socket = new ItemSocket((byte)maxSockets, (byte)sockets);
+            for (int i = 0; i < gems.Length; i++) {
+                Item? gem = session.Field?.ItemDrop.CreateItem(gems[i]);
+                if (gem == null || gem.Inventory != InventoryType.Gemstone) {
+                    ctx.Console.Error.WriteLine($"--gem {gems[i]} is not a gem item.");
+                    return false;
+                }
+                if (!session.TableMetadata.GemstoneUpgradeTable.Entries.TryGetValue(gem.Id, out GemstoneUpgradeTable.Entry? gemRow)
+                    || !ItemSocketRules.GemFits(gemRow.EquipPart, ItemSocketRules.GemItemKind(property.SkinType, GearScoreRules.SubType(item.Id)))) {
+                    ctx.Console.Error.WriteLine($"--gem {gems[i]} does not fit item {item.Id}'s sockets.");
+                    return false;
+                }
+                socket.Sockets[i] = new ItemGemstone(gem.Id, null, (gem.Stats ?? ItemStats.Default).Clone());
+            }
+            item.Socket = socket;
+        }
+        if (bonusClear || stats.Length > 0 || specials.Length > 0) {
+            item.Stats ??= new ItemStats();
+            item.Stats[ItemStats.Type.Random] = new ItemStats.Option();
+        }
+        if (!ApplyOptionLines(ctx, item, stats, special: false)) return false;
+        if (!ApplyOptionLines(ctx, item, specials, special: true)) return false;
+        return true;
+    }
+
+    // A client stat or special id and its value ("31=5"): the client's ids are what its tooltip and the browser show
+    // (BasicAttributeIds.TryServerStat; a special id is the SpecialAttribute's value), and the value is the int the
+    // client prints (a rate in tenths/ thousandths by the client's stat table, as every item option is).
+    private static bool ApplyOptionLines(InvocationContext ctx, Item item, string[] lines, bool special) {
+        foreach (string line in lines) {
+            int eq = line.IndexOf('=');
+            if (eq <= 0 || !int.TryParse(line.AsSpan(0, eq), out int id)
+                || !int.TryParse(line.AsSpan(eq + 1), out int value) || value < 0 || value > 1_000_000) {
+                ctx.Console.Error.WriteLine($"--{(special ? "special" : "stat")} {line}: write clientId=value, a value from 0 to 1000000.");
+                return false;
+            }
+            if (special) {
+                if (id <= 0 || id >= 0xcf || !Enum.IsDefined((SpecialAttribute) id)) {
+                    ctx.Console.Error.WriteLine($"--special {line}: {id} is not a special ability id (0..{0xce}).");
+                    return false;
+                }
+                item.Stats![ItemStats.Type.Random].Special[(SpecialAttribute) id] = new SpecialOption(value);
+            } else {
+                if (!BasicAttributeIds.TryServerStat(id, out BasicAttribute attribute)) {
+                    ctx.Console.Error.WriteLine($"--stat {line}: {id} is not a client stat id (0..{BasicAttributeIds.ClientStatCount - 1}).");
+                    return false;
+                }
+                item.Stats![ItemStats.Type.Random].Basic[attribute] = new BasicOption(value);
+            }
+        }
+        return true;
     }
 
     private bool GiveItem(InvocationContext ctx, Item item) {
