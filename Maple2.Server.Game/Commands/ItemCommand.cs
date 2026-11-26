@@ -188,8 +188,10 @@ public class ItemCommand : GameCommand {
                 ctx.Console.Error.WriteLine($"--enchant {enchant} is not possible for item {item.Id} (its slot, level or enchant limit refuses it).");
                 return false;
             }
-            ItemEnchant leveled = ItemEnchantManager.GetEnchant(session, item, enchant);
-            if (leveled.Enchants != enchant) {
+            // Every grade's increment through the target, as the manager's successful grades add them
+            // (ItemEnchantManager.ApplyEnchantStats): the table's rate is the grade's own step, not the total.
+            ItemEnchant? leveled = BuildEnchant(session, item, enchant);
+            if (leveled == null) {
                 ctx.Console.Error.WriteLine($"--enchant {enchant} has no row in the enchant table for item {item.Id} at rarity {item.Rarity}.");
                 return false;
             }

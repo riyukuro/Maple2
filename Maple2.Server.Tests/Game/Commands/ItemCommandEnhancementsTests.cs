@@ -68,6 +68,8 @@ public class ItemCommandEnhancementsTests {
         }));
         var enchantRows = new Dictionary<int, EnchantOptionMetadata> {
             [1] = new(Id: 1, Slot: 12, EnchantLevel: 3, Rarity: 3, Rate: 0.016f, MinLevel: 20, MaxLevel: 99, Attributes: [BasicAttribute.Piercing]),
+            [2] = new(Id: 2, Slot: 12, EnchantLevel: 1, Rarity: 3, Rate: 0.004f, MinLevel: 20, MaxLevel: 99, Attributes: [BasicAttribute.Piercing]),
+            [3] = new(Id: 3, Slot: 12, EnchantLevel: 2, Rarity: 3, Rate: 0.008f, MinLevel: 20, MaxLevel: 99, Attributes: [BasicAttribute.Piercing]),
         };
         for (int level = 1; level <= 15; level++) {
             enchantRows[100 + level] = new(Id: 100 + level, Slot: 12, EnchantLevel: level, Rarity: 5, Rate: 0.016f, MinLevel: 20, MaxLevel: 99, Attributes: [BasicAttribute.Piercing]);
@@ -120,7 +122,8 @@ public class ItemCommandEnhancementsTests {
         Item item = Spawned(session, GearId)!;
         Assert.Multiple(() => {
             Assert.That(item.Enchant!.Enchants, Is.EqualTo(3));
-            Assert.That(item.Enchant.BasicOptions[BasicAttribute.Piercing].Value, Is.EqualTo(16));
+            // Grades 1, 2 and 3 added (4 + 8 + 16), as three successful enchants make it, not grade 3's step alone.
+            Assert.That(item.Enchant.BasicOptions[BasicAttribute.Piercing].Value, Is.EqualTo(28));
         });
     }
 
