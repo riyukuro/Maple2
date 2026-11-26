@@ -170,7 +170,7 @@ public class ItemCommand : GameCommand {
             return false;
         }
         if (enchant > 0) {
-            if (!ItemEnchantRules.CanEnchant(session.ServerTableMetadata.EnchantLimitTable, property.Type, property.SubType,
+            if (!ItemEnchantRules.CanEnchant(session.ServerTableMetadata.EnchantLimitTable, property.Type, GearScoreRules.SubType(item.Id),
                     item.Metadata.Limit.Level, item.Metadata.Limit.EnableEnchant, enchant - 1, 0, item.ExpiryTime)) {
                 ctx.Console.Error.WriteLine($"--enchant {enchant} is not possible for item {item.Id} (its slot, level or enchant limit refuses it).");
                 return false;
@@ -222,14 +222,9 @@ public class ItemCommand : GameCommand {
             limit.Level = limitBreak;
             item.LimitBreak = limit;
         }
-        int maxSockets = 0;
-        if (property.SocketId != 0) {
-            ItemSocketTable table = session.TableMetadata.ItemSocketTable;
-            if (!table.Entries.TryGetValue(property.SocketId, item.Rarity, out ItemSocketMetadata? socketRow)) {
-                table.Entries.TryGetValue(property.SocketId, 0, out socketRow);
-            }
-            maxSockets = Math.Min((int)(socketRow?.MaxCount ?? 0), MAX_SOCKET);
-        }
+        // The sockets the item's creation gave it: the itemsocket row of its socketDataId, or the same Lua rule
+        // (earrings, necklaces and rings at level 50, grade 3 or more) the client applies without one.
+        int maxSockets = Math.Min((int)(item.Socket?.MaxSlots ?? 0), MAX_SOCKET);
         if (sockets >= 0 || gems.Length > 0) {
             if (maxSockets <= 0) {
                 ctx.Console.Error.WriteLine($"item {item.Id} has no sockets.");

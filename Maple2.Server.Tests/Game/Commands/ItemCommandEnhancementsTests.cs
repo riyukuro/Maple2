@@ -15,6 +15,7 @@ namespace Maple2.Server.Tests.Game.Commands;
 // adds nothing.
 public class ItemCommandEnhancementsTests {
     private const int GearId = 11200001;   // id type 12: an accessory, the gem kind that fits equipPart 3
+    private const int LuaGearId = 11200006; // another accessory, with no socketDataId: the client's Lua socket rule
     private const int GemId = 40200001;
     private const int GemId2 = 40200002;
 
@@ -22,8 +23,16 @@ public class ItemCommandEnhancementsTests {
         ItemMetadata metadata = TestGameSession.Metadata(GearId);
         return metadata with {
             Property = metadata.Property with {
-                Type = 1, SubType = 12, SocketId = 7, LimitBreakMaxLevel = 5, Rank = 3,
+                Type = 1, SubType = 0, SocketId = 7, LimitBreakMaxLevel = 5, Rank = 3,   // the command takes the slot from the id
             },
+            Limit = metadata.Limit with { Level = 50, EnableEnchant = true },
+        };
+    }
+
+    private static ItemMetadata LuaGearMetadata() {
+        ItemMetadata metadata = TestGameSession.Metadata(LuaGearId);
+        return metadata with {
+            Property = metadata.Property with { Type = 1, SubType = 0, SocketId = 0, Rank = 4 },
             Limit = metadata.Limit with { Level = 50, EnableEnchant = true },
         };
     }
@@ -60,7 +69,7 @@ public class ItemCommandEnhancementsTests {
             [GemId] = new(Level: 1, NextItemId: 0, Ingredients: [], EquipPart: 3),
             [GemId2] = new(Level: 1, NextItemId: 0, Ingredients: [], EquipPart: 3),
         }));
-        test.Register(GearMetadata(), GemMetadata(GemId), GemMetadata(GemId2), TestGameSession.Metadata(20000004, type: 2));
+        test.Register(GearMetadata(), LuaGearMetadata(), GemMetadata(GemId), GemMetadata(GemId2), TestGameSession.Metadata(20000004, type: 2));
         test.SetTable(new ItemOptionPickTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOptionPickTable.Option>>()));
         test.SetTable(new ItemOptionConstantTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOptionConstant>>()));
         test.SetTable(new ItemOptionRandomTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOption>>()));
@@ -136,6 +145,20 @@ public class ItemCommandEnhancementsTests {
             Assert.That(item.Socket.Sockets[0]!.ItemId, Is.EqualTo(GemId));
             Assert.That(item.Socket.Sockets[1]!.ItemId, Is.EqualTo(GemId2));
             Assert.That(item.Socket.Sockets[2], Is.Null);
+        });
+    }
+
+    [Test]
+    public void Sockets_UseTheLuaRuleWithoutASocketId() {
+        (_, GameSession session) = Start();
+        (int code, string error) = Run(session, LuaGearId.ToString(), "--socket", "3", "--gem", GemId.ToString());
+        Assert.That(error, Is.Empty);
+        Assert.That(code, Is.EqualTo(0));
+        Item item = Spawned(session, LuaGearId)!;
+        Assert.Multiple(() => {
+            Assert.That(item.Socket!.MaxSlots, Is.EqualTo(3));
+            Assert.That(item.Socket.UnlockSlots, Is.EqualTo(3));
+            Assert.That(item.Socket.Sockets[0]!.ItemId, Is.EqualTo(GemId));
         });
     }
 
