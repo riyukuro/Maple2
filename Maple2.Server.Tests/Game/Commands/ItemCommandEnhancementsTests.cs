@@ -23,7 +23,7 @@ public class ItemCommandEnhancementsTests {
         ItemMetadata metadata = TestGameSession.Metadata(GearId);
         return metadata with {
             Property = metadata.Property with {
-                Type = 1, SubType = 0, SocketId = 7, LimitBreakMaxLevel = 5, Rank = 3,   // the command takes the slot from the id
+                Type = 1, SlotMax = 1, SubType = 0, SocketId = 7, LimitBreakMaxLevel = 5, Rank = 3,   // the command takes the slot from the id
             },
             Limit = metadata.Limit with { Level = 50, EnableEnchant = true },
         };
@@ -169,6 +169,50 @@ public class ItemCommandEnhancementsTests {
         Assert.That(Run(session, GearId.ToString(), "--socket", "1", "--gem", "99999999").Error, Does.Contain("not a gem item"));
         Assert.That(Run(session, GearId.ToString(), "--socket", "1", "--gem", GemId.ToString(), "--gem", GemId2.ToString()).Error, Does.Contain("2 ids for 1 unlocked socket"));
         Assert.That(session.Item.Inventory.Find(GearId), Is.Empty);
+    }
+
+    // The debug item browser sends one --gem per unlocked socket, 0 for an empty one: the socket stays empty and the
+    // later gem keeps its own socket.
+    [Test]
+    public void Sockets_GemZeroIsAnEmptySocket() {
+        (_, GameSession session) = Start();
+        (int code, string error) = Run(session, GearId.ToString(), "--socket", "3", "--gem", "0", "--gem", GemId.ToString(), "--gem", "0");
+        Assert.That(error, Is.Empty);
+        Assert.That(code, Is.EqualTo(0));
+        Item item = Spawned(session, GearId)!;
+        Assert.Multiple(() => {
+            Assert.That(item.Socket!.UnlockSlots, Is.EqualTo(3));
+            Assert.That(item.Socket.Sockets[0], Is.Null);
+            Assert.That(item.Socket.Sockets[1]!.ItemId, Is.EqualTo(GemId));
+            Assert.That(item.Socket.Sockets[2], Is.Null);
+        });
+    }
+
+    // A negative level or socket count is an error, not a plain item.
+    [Test]
+    public void NegativeValues_AreErrors() {
+        (_, GameSession session) = Start();
+        Assert.That(Run(session, GearId.ToString(), "--enchant", "-1").Error, Does.Contain("0 or more"));
+        Assert.That(Run(session, GearId.ToString(), "--limit-break", "-1").Error, Does.Contain("0 or more"));
+        Assert.That(Run(session, GearId.ToString(), "--socket", "-2").Error, Does.Contain("0 or more"));
+        Assert.That(session.Item.Inventory.Find(GearId), Is.Empty);
+    }
+
+    // A non-stackable item spawned with an amount: every copy has the enhancements, not only the first.
+    [Test]
+    public void Amount_EveryCopyIsEnhanced() {
+        (_, GameSession session) = Start();
+        (int code, string error) = Run(session, GearId.ToString(), "--amount", "2", "--enchant", "3", "--socket", "1", "--gem", GemId.ToString());
+        Assert.That(error, Is.Empty);
+        Assert.That(code, Is.EqualTo(0));
+        List<Item> items = session.Item.Inventory.Find(GearId).ToList();
+        Assert.That(items, Has.Count.EqualTo(2));
+        Assert.Multiple(() => {
+            foreach (Item item in items) {
+                Assert.That(item.Enchant?.Enchants, Is.EqualTo(3));
+                Assert.That(item.Socket?.Sockets[0]?.ItemId, Is.EqualTo(GemId));
+            }
+        });
     }
 
     [Test]

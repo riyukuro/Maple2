@@ -34,7 +34,7 @@ public class ItemCommand : GameCommand {
         var enchant = new Option<int>(["--enchant"], () => 0, "Enchant level 0..15 (gear only).");
         var limitBreak = new Option<int>(["--limit-break"], () => 0, "Limit break level 0..the item's maximum (gear only; no enchant with it).");
         var sockets = new Option<int>(["--socket"], () => -1, "Unlocked sockets 0..5 (gear only; -1 leaves the item's own).");
-        var gems = new Option<int[]>(["--gem"], "A gem item id for an unlocked socket, in order (repeat or list; gear only).");
+        var gems = new Option<int[]>(["--gem"], "A gem item id for an unlocked socket, in order, 0 for an empty one (repeat or list; gear only).");
         var stats = new Option<string[]>(["--stat"], "A bonus stat as clientStatId=value, in the random group (repeat; gear only).");
         var specials = new Option<string[]>(["--special"], "A bonus special ability as clientSpecialId=value, in the random group (repeat; gear only).");
         var bonusClear = new Option<bool>(["--bonus-clear"], () => false, "Clear the rolled random options, so only the --stat/--special lines stay.");
@@ -71,8 +71,10 @@ public class ItemCommand : GameCommand {
                 return;
             }
 
-            if (!ApplyEnhancements(ctx, firstItem, enchant, limitBreak, sockets, gems ?? Array.Empty<int>(),
-                    stats ?? Array.Empty<string>(), specials ?? Array.Empty<string>(), bonusClear)) {
+            // Every copy of a non-stackable item gets the same enhancements, not only the first.
+            bool Enhance(Item item) => ApplyEnhancements(ctx, item, enchant, limitBreak, sockets, gems ?? Array.Empty<int>(),
+                stats ?? Array.Empty<string>(), specials ?? Array.Empty<string>(), bonusClear);
+            if (!Enhance(firstItem)) {
                 ctx.ExitCode = 1;
                 return;
             }
@@ -95,6 +97,9 @@ public class ItemCommand : GameCommand {
                         Item? additionalItem = session.Field.ItemDrop.CreateItem(itemId, rarity, rollMax: rollMax);
                         if (additionalItem == null) {
                             ctx.Console.Error.WriteLine($"Failed to create additional item {i + 1}/{amount}");
+                            continue;
+                        }
+                        if (!Enhance(additionalItem)) {
                             continue;
                         }
                         session.Field.DropItem(session.Player, additionalItem);
@@ -126,6 +131,9 @@ public class ItemCommand : GameCommand {
                         ctx.Console.Error.WriteLine($"Failed to create additional item {i + 1}/{amount}");
                         continue;
                     }
+                    if (!Enhance(additionalItem)) {
+                        continue;
+                    }
                     if (!GiveItem(ctx, additionalItem)) {
                         return;
                     }
@@ -152,6 +160,11 @@ public class ItemCommand : GameCommand {
     // row fits the item's kind, as ItemSocketHandler.HandleEquipGemstone checks).
     private bool ApplyEnhancements(InvocationContext ctx, Item item, int enchant, int limitBreak, int sockets, int[] gems,
                                    string[] stats, string[] specials, bool bonusClear) {
+        // A negative level or socket count is refused, not read as "not given" (only --socket -1 means the item's own).
+        if (enchant < 0 || limitBreak < 0 || sockets < -1) {
+            ctx.Console.Error.WriteLine("--enchant and --limit-break take 0 or more, --socket 0 or more (-1: the item's own).");
+            return false;
+        }
         bool wants = enchant > 0 || limitBreak > 0 || sockets >= 0 || gems.Length > 0 || stats.Length > 0 || specials.Length > 0 || bonusClear;
         if (!wants) {
             return true;
@@ -241,6 +254,9 @@ public class ItemCommand : GameCommand {
             }
             var socket = new ItemSocket((byte)maxSockets, (byte)sockets);
             for (int i = 0; i < gems.Length; i++) {
+                // 0 is an empty unlocked socket, so a later gem keeps its socket (the debug item browser sends one
+                // id per unlocked socket).
+                if (gems[i] == 0) continue;
                 Item? gem = session.Field?.ItemDrop.CreateItem(gems[i]);
                 if (gem == null || gem.Inventory != InventoryType.Gemstone) {
                     ctx.Console.Error.WriteLine($"--gem {gems[i]} is not a gem item.");
