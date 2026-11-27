@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Maple2.Model.Enum;
@@ -12,7 +13,8 @@ using Maple2.Server.Game.Packets;
 namespace Maple2.Server.Tests.Game.Packets;
 
 // SkillDamage modes 1, 5 and 6 send the health a hit takes negated (CombatLayoutTests.DamageHits and
-// RegionDamagePacketTests read the layouts). These cover what stays as it was.
+// RegionDamagePacketTests read the layouts). These cover what stays as it was: the server's record, and the pet
+// taming record in every mode.
 public class SkillDamageSignTests {
     private const int NpcObjectId = 0x1234;
 
@@ -57,6 +59,40 @@ public class SkillDamageSignTests {
         Assert.That(reader.ReadByte(), Is.EqualTo(1));
         Assert.That(reader.ReadInt(), Is.EqualTo(NpcObjectId));
         Assert.That(reader.ReadByte(), Is.EqualTo(1));
+        Assert.That(reader.ReadByte(), Is.EqualTo((byte) DamageType.Normal));
+        Assert.That(reader.ReadLong(), Is.EqualTo(-300));
+        Assert.That(reader.Position, Is.EqualTo(writer.Length));
+    }
+
+    // A region skill's taming hit (FieldSkill calls ApplyDamage on its targets) keeps its sign through mode 5, as
+    // through mode 1.
+    [Test]
+    public void RegionTamingRecordIsNotNegated() {
+        var target = new DamageRecordTarget(Npc()) { HealthTaken = false };
+        target.AddDamage(DamageType.Normal, -300);
+        ByteWriter writer = SkillDamagePacket.Region(Record(target));
+        var reader = new ByteReader(writer.Buffer, 0);
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.SkillDamage));
+        Assert.That(reader.ReadByte(), Is.EqualTo(5));
+        reader.Skip(8 + 4 + 4 + 1);
+        Assert.That(reader.ReadByte(), Is.EqualTo(1));
+        Assert.That(reader.ReadInt(), Is.EqualTo(NpcObjectId));
+        Assert.That(reader.ReadByte(), Is.EqualTo(1));
+        reader.Skip(6 + 12);
+        Assert.That(reader.ReadByte(), Is.EqualTo((byte) DamageType.Normal));
+        Assert.That(reader.ReadLong(), Is.EqualTo(-300));
+        Assert.That(reader.Position, Is.EqualTo(writer.Length));
+    }
+
+    // The same for a cube skill's mode 6.
+    [Test]
+    public void TileTamingTargetIsNotNegated() {
+        ByteWriter writer = SkillDamagePacket.Tile(70000008, 1,
+            new SkillDamagePacket.RegionTarget(NpcObjectId, Vector3.Zero, Vector3.UnitZ, [(DamageType.Normal, -300)], HealthTaken: false));
+        var reader = new ByteReader(writer.Buffer, 0);
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.SkillDamage));
+        Assert.That(reader.ReadByte(), Is.EqualTo(6));
+        reader.Skip(8 + 4 + 2 + 1 + 4 + 1 + 6 + 12);
         Assert.That(reader.ReadByte(), Is.EqualTo((byte) DamageType.Normal));
         Assert.That(reader.ReadLong(), Is.EqualTo(-300));
         Assert.That(reader.Position, Is.EqualTo(writer.Length));

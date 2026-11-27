@@ -97,15 +97,16 @@ public static class SkillDamagePacket {
 
     public static ByteWriter Region(DamageRecord record) {
         return Region(record.SkillUid, record.CasterId, record.OwnerId, record.AttackPoint, record.Targets.Values
-            .Select(target => new RegionTarget(target.ObjectId, target.Position, target.Direction, target.Damage))
+            .Select(target => new RegionTarget(target.ObjectId, target.Position, target.Direction, target.Damage, target.HealthTaken))
             .ToArray());
     }
 
     // One target of a region damage packet. Position is the region's point the target was reached from; KMS2
     // sends it cut to whole numbers (not rounded). An attack without damage (damage count 0: a region that only
-    // gives a buff or heals) names its targets with no damage entry.
+    // gives a buff or heals) names its targets with no damage entry. HealthTaken as in DamageRecordTarget: false for
+    // the pet taming record, whose amounts go out as they are.
     public readonly record struct RegionTarget(int ObjectId, Vector3 Position, Vector3 Direction,
-                                               IReadOnlyList<(DamageType Type, long Amount)> Damage);
+                                               IReadOnlyList<(DamageType Type, long Amount)> Damage, bool HealthTaken = true);
 
     public static ByteWriter Region(long skillUid, int casterId, int ownerId, byte attackPoint, IReadOnlyCollection<RegionTarget> targets) {
         var pWriter = Packet.Of(SendOp.SkillDamage);
@@ -126,7 +127,7 @@ public static class SkillDamagePacket {
             pWriter.Write<Vector3>(target.Direction);
             foreach ((DamageType type, long amount) in target.Damage) {
                 pWriter.Write<DamageType>(type);
-                pWriter.WriteLong(HealthTaken(amount));
+                pWriter.WriteLong(target.HealthTaken ? HealthTaken(amount) : amount);
             }
         }
 
@@ -161,7 +162,7 @@ public static class SkillDamagePacket {
         pWriter.Write<Vector3>(target.Direction);
         foreach ((DamageType type, long amount) in target.Damage) {
             pWriter.Write<DamageType>(type);
-            pWriter.WriteLong(HealthTaken(amount));
+            pWriter.WriteLong(target.HealthTaken ? HealthTaken(amount) : amount);
         }
 
         return pWriter;

@@ -99,7 +99,7 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
 
         foreach (DamageRecordTarget target in record.Targets.Values) {
             Field.Broadcast(SkillDamagePacket.Tile(record.SkillId, record.Level,
-                new SkillDamagePacket.RegionTarget(target.ObjectId, target.Position, target.Direction, target.Damage)));
+                new SkillDamagePacket.RegionTarget(target.ObjectId, target.Position, target.Direction, target.Damage, target.HealthTaken)));
         }
     }
 
