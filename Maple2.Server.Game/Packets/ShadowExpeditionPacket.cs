@@ -5,7 +5,7 @@ using Maple2.Server.Core.Packets;
 namespace Maple2.Server.Game.Packets;
 
 // The field game score board (client FieldGameScoreBoardCli, 0xE1). Command 0 opens a board: its kind, the title
-// (a narrow string, looked up as a server string), the current and the most points. Kind 1 is the Shadow
+// (a wide string, looked up as a server string), the current and the most points. Kind 1 is the Shadow
 // Expedition boss gauge (cur*100/max %); kinds 2 and 3 are the score dialog that shows only the current points,
 // 2 at the top center and 3 at the top right (80 px higher). Command 1 (an int) sets the current points of the
 // open board. Command 2 closes the board.
@@ -28,7 +28,7 @@ public static class ShadowExpeditionPacket {
         var pWriter = Packet.Of(SendOp.ShadowExpedition);
         pWriter.WriteByte((byte) Command.Open);
         pWriter.WriteByte(kind);
-        pWriter.WriteString(title);
+        pWriter.WriteUnicodeString(title);
         pWriter.WriteInt(points);
         pWriter.WriteInt(maxPoints);
         return pWriter;

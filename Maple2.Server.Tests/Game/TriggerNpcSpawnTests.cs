@@ -414,7 +414,7 @@ public class TriggerNpcSpawnTests : TriggerTestBase {
 
         Action("""<action name="shadow_expedition_open_boss_gauge" type="OpenBossGauge" title="$02000403_BF__EVENT_02__9$" max_gauge_point="1000" />""");
         ByteReader open = Sent(SendOp.ShadowExpedition).Single();
-        Assert.That((open.ReadByte(), open.ReadByte(), open.ReadString(), open.ReadInt(), open.ReadInt(), open.Available),
+        Assert.That((open.ReadByte(), open.ReadByte(), open.ReadUnicodeString(), open.ReadInt(), open.ReadInt(), open.Available),
             Is.EqualTo(((byte) 0, (byte) 1, "$02000403_BF__EVENT_02__9$", 0, 1000, 0)));
 
         Field.ShadowGaugeKilled(Field.Mobs.Keys.First());

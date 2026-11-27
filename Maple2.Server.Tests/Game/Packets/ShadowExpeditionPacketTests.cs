@@ -7,8 +7,8 @@ using TriggerActions = Maple2.Server.Game.Trigger.Helpers.Trigger;
 
 namespace Maple2.Server.Tests.Game.Packets;
 
-// Client: FieldGameScoreBoardCli (0xE1) reads a byte command; 0 = byte kind (1 is the boss gauge), a narrow string
-// title (DecodeStrA), int current, int most; 1 = int current; 2 closes the board.
+// Client: FieldGameScoreBoardCli (0xE1) reads a byte command; 0 = byte kind (1 is the boss gauge), a wide string
+// title (CInPacket::DecodeStr, read as a CStringW), int current, int most; 1 = int current; 2 closes the board.
 public class ShadowExpeditionPacketTests {
     [Test]
     public void OpenBossGauge_WritesKindTitleAndPoints() {
@@ -17,10 +17,10 @@ public class ShadowExpeditionPacketTests {
         Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.ShadowExpedition));
         Assert.That(reader.ReadByte(), Is.EqualTo(0));
         Assert.That(reader.ReadByte(), Is.EqualTo(1));
-        Assert.That(reader.ReadString(), Is.EqualTo("ab"));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("ab"));
         Assert.That(reader.ReadInt(), Is.EqualTo(0));
         Assert.That(reader.ReadInt(), Is.EqualTo(800));
-        Assert.That(writer.Length, Is.EqualTo(2 + 1 + 1 + (2 + 2) + 4 + 4));
+        Assert.That(writer.Length, Is.EqualTo(2 + 1 + 1 + (2 + 2 * 2) + 4 + 4));
     }
 
     [Test]
@@ -30,10 +30,27 @@ public class ShadowExpeditionPacketTests {
         Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.ShadowExpedition));
         Assert.That(reader.ReadByte(), Is.EqualTo(0));
         Assert.That(reader.ReadByte(), Is.EqualTo(2));
-        Assert.That(reader.ReadString(), Is.EqualTo(""));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo(""));
         Assert.That(reader.ReadInt(), Is.EqualTo(0));
         Assert.That(reader.ReadInt(), Is.EqualTo(0));
         Assert.That(writer.Length, Is.EqualTo(2 + 1 + 1 + 2 + 4 + 4));
+    }
+
+    [Test]
+    public void OpenBossGauge_WritesAPlainTextTitleAsUtf16() {
+        // A plain text title, as some trigger scripts give one ("output energy"), goes out as UTF-16 code units.
+        const string title = "\uCD9C\uB825";
+        ByteWriter writer = ShadowExpeditionPacket.OpenBossGauge(title, 10, 100);
+        var reader = new ByteReader(writer.Buffer, 0);
+        reader.Read<SendOp>();
+        reader.ReadByte();
+        reader.ReadByte();
+        Assert.That(reader.ReadShort(), Is.EqualTo(2));
+        Assert.That(reader.Read<ushort>(), Is.EqualTo((ushort) 0xCD9C));
+        Assert.That(reader.Read<ushort>(), Is.EqualTo((ushort) 0xB825));
+        Assert.That(reader.ReadInt(), Is.EqualTo(10));
+        Assert.That(reader.ReadInt(), Is.EqualTo(100));
+        Assert.That(writer.Length, Is.EqualTo(2 + 1 + 1 + (2 + 2 * 2) + 4 + 4));
     }
 
     [Test]

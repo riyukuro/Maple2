@@ -41,7 +41,7 @@ public class ScoreBoardTests {
         Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.ShadowExpedition));
         Assert.That(reader.ReadByte(), Is.EqualTo(0));
         Assert.That(reader.ReadByte(), Is.EqualTo(2));
-        Assert.That(reader.ReadString(), Is.EqualTo(""));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo(""));
         Assert.That(reader.ReadInt(), Is.EqualTo(7));
         Assert.That(reader.ReadInt(), Is.EqualTo(0));
         Assert.That(writer.Length, Is.EqualTo(2 + 1 + 1 + 2 + 4 + 4));
@@ -54,7 +54,7 @@ public class ScoreBoardTests {
         reader.Read<SendOp>();
         reader.ReadByte();
         Assert.That(reader.ReadByte(), Is.EqualTo(1));
-        Assert.That(reader.ReadString(), Is.EqualTo("ab"));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("ab"));
         Assert.That(reader.ReadInt(), Is.EqualTo(0));
         Assert.That(reader.ReadInt(), Is.EqualTo(800));
     }
