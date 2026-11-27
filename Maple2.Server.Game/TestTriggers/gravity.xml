@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- set_gravity with the values shipped triggers use, 12 s each: -37 (52000056_qd 50001460), -9.8 (the value those triggers
+     restore), 55 and 0 (02020112_bf), -32 (02000386_bf), then -9.8 again. -->
+<ms2>
+  <state name="gravity_37">
+    <onEnter>
+      <action name="set_gravity" gravity="-37" />
+    </onEnter>
+    <condition name="wait_tick" wait_tick="12000">
+      <transition state="gravity_9_8" />
+    </condition>
+  </state>
+  <state name="gravity_9_8">
+    <onEnter>
+      <action name="set_gravity" gravity="-9.8" />
+    </onEnter>
+    <condition name="wait_tick" wait_tick="12000">
+      <transition state="gravity_up_55" />
+    </condition>
+  </state>
+  <state name="gravity_up_55">
+    <onEnter>
+      <action name="set_gravity" gravity="55" />
+    </onEnter>
+    <condition name="wait_tick" wait_tick="12000">
+      <transition state="gravity_0" />
+    </condition>
+  </state>
+  <state name="gravity_0">
+    <onEnter>
+      <action name="set_gravity" gravity="0" />
+    </onEnter>
+    <condition name="wait_tick" wait_tick="12000">
+      <transition state="gravity_32" />
+    </condition>
+  </state>
+  <state name="gravity_32">
+    <onEnter>
+      <action name="set_gravity" gravity="-32" />
+    </onEnter>
+    <condition name="wait_tick" wait_tick="12000">
+      <transition state="gravity_end" />
+    </condition>
+  </state>
+  <state name="gravity_end">
+    <onEnter>
+      <action name="set_gravity" gravity="-9.8" />
+    </onEnter>
+  </state>
+</ms2>

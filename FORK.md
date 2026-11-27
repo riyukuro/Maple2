@@ -1491,6 +1491,8 @@ GM chat commands the client's own GM windows and hotkeys send (each needs the pe
 
 The two toggles last for the session (they stay on across field changes and go off at a channel change, a relog, or when the account stops being a GM).
 
+Test triggers: `trigger load <name>` (Debug, a server command, not one the client sends) runs `Maple2.Server.Game/TestTriggers/<name>.xml` on the sender's field instance from its first state, at the sender's position, as the trigger `gmtest_<name>`. A second load restarts it. The script is a normal trigger file, and it acts on that field's own boxes, meshes and spawns. It is for trigger actions the story reaches rarely or late. `gravity.xml` steps through `set_gravity` values that shipped maps use (-37, -9.8, 55, 0, -32, then -9.8 again), 12 seconds apart. Names are lower-case letters, digits and `_`. A missing file, broken XML or a script without states starts nothing and says why. Unlike the `DebugTriggers` build switch, which reads every map's triggers from files, this changes only the one field instance, while the server runs.
+
 ## GM-only packets
 Some packets and packet modes are sent by the client only from a GM command, a debug hotkey or a developer dialog (the client tests its GM level or its debug mode before it writes them). A handler for one of those starts with `GmCheck.Allow(session, OpCode, mode)` (`Maple2.Server.Game/Util/GmCheck.cs`): the account needs the GameMaster or Admin permission, as set with the `perm` command. Any other sender is dropped with one warning (account id, opcode, mode) and gets no reply. A new handler or mode of that kind must start the same way.
 

@@ -7,6 +7,7 @@ using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Commands;
 
@@ -15,6 +16,43 @@ public class TriggerCommand : GameCommand {
         AddCommand(new ListCommand(session));
         AddCommand(new ResetCommand(session));
         AddCommand(new RunCommand(session));
+        AddCommand(new LoadCommand(session));
+    }
+
+    // trigger load <name>: runs TestTriggers/<name>.xml on this field from its first state, as the trigger gmtest_<name>
+    // (a second load restarts it).
+    private class LoadCommand : Command {
+        // The test trigger's id: user values and set_user_value address a trigger by it, and no shipped trigger box uses it.
+        private const int TestTriggerId = 999_999_001;
+        private readonly GameSession session;
+
+        public LoadCommand(GameSession session) : base("load", "Run a test trigger on this field") {
+            this.session = session;
+
+            var name = new Argument<string>("name", "Test trigger file name, without .xml");
+            AddArgument(name);
+            this.SetHandler<InvocationContext, string>(Handle, name);
+        }
+
+        private void Handle(InvocationContext ctx, string name) {
+            if (session.Field is null) return;
+            string xBlock = session.Field.Metadata.XBlock;
+            Trigger.Helpers.Trigger? trigger = TestTriggers.Load(TestTriggers.Dir, name, xBlock, out string error);
+            if (trigger is null) {
+                ctx.Console.Error.WriteLine(error);
+                return;
+            }
+
+            string triggerName = TestTriggers.Prefix + name;
+            session.Field.TriggerCache.AddReplace((xBlock, triggerName), trigger);
+            var model = new TriggerModel(TestTriggerId, triggerName, session.Player.Position, session.Player.Rotation);
+            if (session.Field.AddTrigger(model) is null) {
+                ctx.Console.Error.WriteLine($"Test trigger {name} could not start.");
+                return;
+            }
+
+            ctx.Console.Out.WriteLine($"Test trigger {name} started ({trigger.States.Count} states).");
+        }
     }
 
     private class ListCommand : Command {
