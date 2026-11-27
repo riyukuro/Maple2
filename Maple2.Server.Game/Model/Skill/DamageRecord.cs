@@ -54,6 +54,9 @@ public class DamageRecordTarget {
     public int ObjectId => Target.ObjectId;
     public Vector3 Position;
     public Vector3 Direction;
+    // The amounts are health taken, kept positive here; SkillDamage sends them negated (SkillDamagePacket.HealthTaken).
+    // False for the pet taming record, whose amounts are taming points and go out as they are.
+    public bool HealthTaken { get; init; } = true;
 
     private readonly List<(DamageType, long)> damage;
     public IReadOnlyList<(DamageType Type, long Amount)> Damage => damage;

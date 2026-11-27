@@ -70,7 +70,7 @@ public class RegionDamagePacketTests {
             Assert.That(reader.ReadShort(), Is.EqualTo(450));
             reader.Skip(12);
             Assert.That(reader.ReadByte(), Is.EqualTo(0));
-            Assert.That(reader.ReadLong(), Is.EqualTo(55));
+            Assert.That(reader.ReadLong(), Is.EqualTo(-55)); // the health taken, negative
             Assert.That(writer.Length, Is.EqualTo(2 + 16 + 23 + 9));
         });
     }
@@ -98,7 +98,7 @@ public class RegionDamagePacketTests {
             Assert.That(reader.ReadShort(), Is.EqualTo(0));
             reader.Skip(12);
             Assert.That(reader.ReadByte(), Is.EqualTo(1));
-            Assert.That(reader.ReadLong(), Is.EqualTo(1234));
+            Assert.That(reader.ReadLong(), Is.EqualTo(-1234)); // the health taken, negative
 
             Assert.That(reader.ReadInt(), Is.EqualTo(1001));
             Assert.That(reader.ReadByte(), Is.EqualTo(0));

@@ -244,7 +244,7 @@ public sealed class FieldPet : FieldNpc {
             return;
         }
 
-        var targetRecord = new DamageRecordTarget(this);
+        var targetRecord = new DamageRecordTarget(this) { HealthTaken = false };
         int pointBefore = TamingPoint;
         int damageAmount = TamingPoint - Math.Min(TamingPoint + attack.Pet.TamingPoint, Constants.TamingPetMaxPoint);
         TamingPoint -= damageAmount;

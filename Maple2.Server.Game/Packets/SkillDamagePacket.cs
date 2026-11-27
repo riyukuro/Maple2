@@ -61,12 +61,18 @@ public static class SkillDamagePacket {
             pWriter.WriteByte((byte) target.Damage.Count);
             foreach ((DamageType type, long amount) in target.Damage) {
                 pWriter.Write<DamageType>(type);
-                pWriter.WriteLong(amount);
+                pWriter.WriteLong(target.HealthTaken ? HealthTaken(amount) : amount);
             }
         }
 
         return pWriter;
     }
+
+    // A hit's amount as modes 1, 5 and 6 send it: the health taken, negative, as retail sends it. The client's PC hit
+    // sound, HitReaction and NpcVibrate run only for a record whose total is below 0 (PC::vfunc_33, pc.cpp:923;
+    // CDamageRecord::GetTotalDamage, skillrecord.cpp:565), and its damage text shows the absolute value. DotDamage's
+    // amount is already the health change.
+    public static long HealthTaken(long amount) => -amount;
 
     public static ByteWriter DotDamage(DotDamageRecord record) {
         var pWriter = Packet.Of(SendOp.SkillDamage);
@@ -120,7 +126,7 @@ public static class SkillDamagePacket {
             pWriter.Write<Vector3>(target.Direction);
             foreach ((DamageType type, long amount) in target.Damage) {
                 pWriter.Write<DamageType>(type);
-                pWriter.WriteLong(amount);
+                pWriter.WriteLong(HealthTaken(amount));
             }
         }
 
@@ -155,7 +161,7 @@ public static class SkillDamagePacket {
         pWriter.Write<Vector3>(target.Direction);
         foreach ((DamageType type, long amount) in target.Damage) {
             pWriter.Write<DamageType>(type);
-            pWriter.WriteLong(amount);
+            pWriter.WriteLong(HealthTaken(amount));
         }
 
         return pWriter;

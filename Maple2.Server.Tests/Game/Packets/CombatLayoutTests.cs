@@ -68,7 +68,7 @@ public class CombatLayoutTests {
     }
 
     // Mode 1 (:5609): long, long, int, int, short, byte, byte, two short points, byte n; per target int, byte hits,
-    // hits x (byte type, long amount).
+    // hits x (byte type, long amount). The amounts are the health taken, negative as retail sends them.
     [Test]
     public void DamageHits() {
         FieldPlayer caster = Player();
@@ -110,9 +110,9 @@ public class CombatLayoutTests {
         Assert.That(reader.ReadInt(), Is.EqualTo(hit.ObjectId));
         Assert.That(reader.ReadByte(), Is.EqualTo(2));
         Assert.That(reader.ReadByte(), Is.EqualTo((byte) DamageType.Critical));
-        Assert.That(reader.ReadLong(), Is.EqualTo(1234));
+        Assert.That(reader.ReadLong(), Is.EqualTo(-1234));
         Assert.That(reader.ReadByte(), Is.EqualTo((byte) DamageType.Normal));
-        Assert.That(reader.ReadLong(), Is.EqualTo(56));
+        Assert.That(reader.ReadLong(), Is.EqualTo(-56));
         Assert.That(reader.Available, Is.Zero);
     }
 
